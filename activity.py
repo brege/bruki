@@ -49,6 +49,47 @@ def get_methods(analysis_set: Dict[str, Any], source_spec: Dict[str, Any]) -> Li
     return methods
 
 
+def resolve_events(
+    config: Dict[str, Any],
+    event_references: List[str],
+    visited_events: Optional[set[str]] = None,
+) -> List[Dict[str, Any]]:
+    if visited_events is None:
+        visited_events = set()
+    events_map = config.get('events', {})
+    resolved_events: List[Dict[str, Any]] = []
+
+    for event_reference in event_references:
+        if event_reference not in events_map:
+            raise ValueError(f"Unknown event reference: {event_reference}")
+        if event_reference in visited_events:
+            raise ValueError(f"Cyclic event group detected at '{event_reference}'")
+
+        event_definition = events_map[event_reference]
+        if 'events' in event_definition:
+            nested_event_references = event_definition['events']
+            if not isinstance(nested_event_references, list):
+                raise ValueError(f"events entry '{event_reference}' must define events as a list")
+            next_visited = set(visited_events)
+            next_visited.add(event_reference)
+            resolved_events.extend(resolve_events(config, nested_event_references, next_visited))
+            continue
+
+        event_type = event_definition.get('type')
+        if event_type == 'band':
+            if 'after' not in event_definition or 'before' not in event_definition:
+                raise ValueError(f"band event '{event_reference}' must include after and before")
+        elif event_type == 'marker':
+            if 'date' not in event_definition:
+                raise ValueError(f"marker event '{event_reference}' must include date")
+        else:
+            raise ValueError(f"event '{event_reference}' has unsupported type '{event_type}'")
+
+        resolved_events.append(event_definition)
+
+    return resolved_events
+
+
 def list_image_paths(
     source_spec: Dict[str, Any],
     extensions: List[str],
@@ -199,7 +240,12 @@ def collect_rows(
 def run_analysis(config: Dict[str, Any], analysis_key: str, output_dir: str) -> None:
     dataframe = collect_rows(config, analysis_key)
     analysis_set = config['analysis_sets'][analysis_key]
-    plot_config = analysis_set.get('plot', {})
+    plot_config = dict(analysis_set.get('plot', {}))
+    event_references = plot_config.get('events', [])
+    if event_references:
+        if not isinstance(event_references, list):
+            raise ValueError(f"plot.events for '{analysis_key}' must be a list")
+        plot_config['event_items'] = resolve_events(config, event_references)
     plots.plot_analysis(dataframe, output_dir, analysis_key, plot_config)
 
 

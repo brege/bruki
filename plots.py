@@ -16,6 +16,35 @@ def set_plot_style() -> None:
     sns.set_palette('husl')
 
 
+def add_events_to_axis(axis, event_items: list[dict]) -> None:
+    for event_item in event_items:
+        label = event_item.get('label', '')
+        color = event_item.get('color', 'gray')
+        alpha = float(event_item.get('alpha', 0.15))
+        if event_item['type'] == 'band':
+            start = pd.to_datetime(event_item['after'])
+            end = pd.to_datetime(event_item['before'])
+            axis.axvspan(start, end, alpha=alpha, color=color)
+            if label:
+                label_rotation = int(event_item.get('label_rotation', 90))
+                midpoint = start + (end - start) / 2
+                axis.text(
+                    midpoint,
+                    0.5,
+                    label,
+                    ha='center',
+                    va='center',
+                    rotation=label_rotation,
+                    transform=axis.get_xaxis_transform(),
+                )
+            continue
+        if event_item['type'] == 'marker':
+            moment = pd.to_datetime(event_item['date'])
+            axis.axvline(moment, color=color, alpha=max(alpha, 0.4), linestyle='--')
+            if label:
+                axis.text(moment, 0.98, label, ha='left', va='top', rotation=90, transform=axis.get_xaxis_transform())
+
+
 def plot_hourly_stacked(
     dataframe: pd.DataFrame,
     output_path: Path,
@@ -79,6 +108,8 @@ def plot_daily_timeseries_by_series(
     title: str,
     y_label: str,
     rolling_window: int,
+    event_items: list[dict],
+    use_log_scale: bool,
 ) -> None:
     plt.figure(figsize=(15, 6))
     for series_value in dataframe[series_key].dropna().unique():
@@ -95,6 +126,9 @@ def plot_daily_timeseries_by_series(
     plt.xlabel('Date')
     plt.ylabel(y_label)
     plt.title(title)
+    if use_log_scale:
+        plt.yscale('log')
+    add_events_to_axis(plt.gca(), event_items)
     plt.legend()
     plt.xticks(rotation=45)
     plt.grid(alpha=0.3)
@@ -109,6 +143,8 @@ def plot_daily_timeseries_total(
     title: str,
     y_label: str,
     rolling_window: int,
+    event_items: list[dict],
+    use_log_scale: bool,
 ) -> None:
     plt.figure(figsize=(15, 6))
     daily_counts = dataframe.groupby('date').size().reset_index(name='count')
@@ -123,6 +159,9 @@ def plot_daily_timeseries_total(
     plt.xlabel('Date')
     plt.ylabel(y_label)
     plt.title(title)
+    if use_log_scale:
+        plt.yscale('log')
+    add_events_to_axis(plt.gca(), event_items)
     plt.legend()
     plt.xticks(rotation=45)
     plt.grid(alpha=0.3)
@@ -140,6 +179,7 @@ def plot_trend_month_day_panels(
     trend_title: str,
     month_title: str,
     day_title: str,
+    event_items: list[dict],
 ) -> None:
     plt.figure(figsize=(15, 10))
     month_year_data = dataframe.assign(month_year=dataframe['timestamp'].dt.to_period('M'))
@@ -157,6 +197,7 @@ def plot_trend_month_day_panels(
     plt.xlabel('Date')
     plt.ylabel(trend_y_label)
     plt.title(trend_title)
+    add_events_to_axis(plt.gca(), event_items)
     plt.legend()
     plt.xticks(rotation=45)
     plt.grid(alpha=0.3)
@@ -203,6 +244,8 @@ def plot_analysis(
     selected_plots = config.get('plots', ['hourly', 'timeseries', 'heatmap'])
     timeseries_mode = config.get('timeseries_mode', 'by_source')
     rolling_window = int(config.get('rolling_window', 7))
+    event_items = config.get('event_items', [])
+    use_log_scale = bool(config.get('log', False))
     series_key = config.get('series_key', 'source')
     if series_key not in clean_data.columns:
         raise ValueError(f"series_key '{series_key}' not found in data")
@@ -227,6 +270,8 @@ def plot_analysis(
                 timeseries_title,
                 f'Number of {value_label}',
                 rolling_window,
+                event_items,
+                use_log_scale,
             )
         else:
             plot_daily_timeseries_by_series(
@@ -236,6 +281,8 @@ def plot_analysis(
                 timeseries_title,
                 f'Number of {value_label}',
                 rolling_window,
+                event_items,
+                use_log_scale,
             )
     if 'panel' in selected_plots:
         plot_trend_month_day_panels(
@@ -247,6 +294,7 @@ def plot_analysis(
             f'{title} Over Time',
             f'{title} by Month',
             f'{title} by Day of Week',
+            event_items,
         )
     if 'heatmap' in selected_plots:
         plot_series_heatmaps(clean_data, output_path, analysis_key, value_label, series_key)

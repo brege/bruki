@@ -1,13 +1,13 @@
 # Image Activity
 
-Plotting image activity over time for multiple sources.
+Plotting image activity over time from multiple sources and image types.
 
 ## Run
 
 ```bash
 uv run activity --all
 uv run activity --key screenshots
-uv run activity --key internet
+uv run activity --key memes
 uv run activity --key camera
 ```
 
@@ -17,29 +17,11 @@ Set a custom output directory:
 uv run activity --all --output-dir images
 ```
 
-## Config Shape
+## Features
 
-Top-level keys:
-
-- `extensions`: file extensions to include
-- `anti_patterns`: global filename globs to exclude
-- `analysis_sets`: named analyses (`screenshots`, `internet`, `camera`, ...)
-
-Each analysis set:
-
-- `method` or `methods`: timestamp extraction strategy
-  - `timestamp`
-  - `exif-created`
-  - `exif-modified`
-  - `modified-time`
-- `sources`: mapping of source names to:
-  - `path`: directory path
-  - `exclude`: list of directory names to skip under that path
-- `patterns`: only used by `timestamp`
-  - `regex`
-  - `timestamp_format`
-  - optional `timestamp_regex` + `timestamp_components_format`
-- `combine`: optional list of other analysis keys to merge into one analysis
+- Add bands and markers for major life events
+- Generate heatmaps over days of week and hours of day
+- Timestamp, mtime, exif, and regex pattern handlign for refined picture-set slicing
 
 ## Output
 
