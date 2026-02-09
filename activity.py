@@ -250,7 +250,7 @@ def run_analysis(config: dict[str, Any], analysis_key: str, output_dir: str) -> 
         if not isinstance(event_references, list):
             raise ValueError(f"plot.events for '{analysis_key}' must be a list")
         plot_config["event_items"] = resolve_events(config, event_references)
-    plots.plot_analysis(dataframe, output_dir, analysis_key, plot_config)
+    plots.plot_set(dataframe, output_dir, analysis_key, plot_config)
 
 
 def main() -> None:

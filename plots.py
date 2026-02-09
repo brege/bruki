@@ -16,6 +16,10 @@ def set_plot_style() -> None:
     sns.set_palette("husl")
 
 
+def slugify(value: str) -> str:
+    return str(value).strip().replace(" ", "-").replace("_", "-")
+
+
 def add_events_to_axis(axis, event_items: list[dict]) -> None:
     for event_item in event_items:
         label = event_item.get("label", "")
@@ -76,7 +80,6 @@ def plot_hourly_stacked(
 def plot_series_heatmaps(
     dataframe: pd.DataFrame,
     output_dir: Path,
-    prefix: str,
     value_label: str,
     series_key: str,
 ) -> None:
@@ -105,9 +108,8 @@ def plot_series_heatmaps(
         plt.ylabel("Day of Week")
         plt.title(f"{value_label} Heatmap - {str(series_value).title()}")
         plt.tight_layout()
-        plt.savefig(
-            output_dir / f"{prefix}_heatmap_{series_value}.png", dpi=300, bbox_inches="tight"
-        )
+        series_slug = slugify(series_value)
+        plt.savefig(output_dir / f"heatmap-{series_slug}.png", dpi=300, bbox_inches="tight")
         plt.close()
 
 
@@ -249,10 +251,10 @@ def plot_trend_month_day_panels(
     plt.close()
 
 
-def plot_analysis(
+def plot_set(
     dataframe: pd.DataFrame,
     output_dir: str,
-    analysis_key: str,
+    key: str,
     plot_config: dict | None = None,
 ) -> None:
     output_path = Path(output_dir)
@@ -262,7 +264,10 @@ def plot_analysis(
         return
 
     config = plot_config or {}
-    title = config.get("title", analysis_key.replace("_", " ").title())
+    title = config.get("title", key.replace("_", " ").title())
+    dir_name = slugify(config.get("output_dirname", key))
+    output_dir = output_path / dir_name
+    output_dir.mkdir(exist_ok=True)
     value_label = config.get("value_label", "Files")
     selected_plots = config.get("plots", ["hourly", "timeseries", "heatmap"])
     timeseries_mode = config.get("timeseries_mode", "by_source")
@@ -278,7 +283,7 @@ def plot_analysis(
     if "hourly" in selected_plots:
         plot_hourly_stacked(
             clean_data,
-            output_path / f"{analysis_key}_hourly.png",
+            output_dir / "hourly.png",
             series_key,
             f"{title} by Hour of Day",
             f"Number of {value_label}",
@@ -289,7 +294,7 @@ def plot_analysis(
         if timeseries_mode == "total":
             plot_daily_timeseries_total(
                 clean_data,
-                output_path / f"{analysis_key}_timeseries.png",
+                output_dir / "timeseries.png",
                 timeseries_title,
                 f"Number of {value_label}",
                 rolling_window,
@@ -299,7 +304,7 @@ def plot_analysis(
         else:
             plot_daily_timeseries_by_series(
                 clean_data,
-                output_path / f"{analysis_key}_timeseries.png",
+                output_dir / "timeseries.png",
                 series_key,
                 timeseries_title,
                 f"Number of {value_label}",
@@ -310,7 +315,7 @@ def plot_analysis(
     if "panel" in selected_plots:
         plot_trend_month_day_panels(
             clean_data,
-            output_path / f"{analysis_key}_temporal.png",
+            output_dir / "temporal.png",
             value_label,
             f"Total {value_label}",
             f"Total {value_label}",
@@ -320,4 +325,4 @@ def plot_analysis(
             event_items,
         )
     if "heatmap" in selected_plots:
-        plot_series_heatmaps(clean_data, output_path, analysis_key, value_label, series_key)
+        plot_series_heatmaps(clean_data, output_dir, value_label, series_key)
