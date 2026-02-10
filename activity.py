@@ -26,20 +26,24 @@ def load_config(config_path: str) -> dict[str, Any]:
         raise ValueError("Configuration must include extensions")
     if "analysis_sets" not in config or not isinstance(config["analysis_sets"], dict):
         raise ValueError("Configuration must include analysis_sets mapping")
+    for set_name, set_config in config["analysis_sets"].items():
+        if not isinstance(set_config, dict):
+            raise ValueError(f"analysis set '{set_name}' must be a mapping")
+        if "combine" in set_config:
+            if not isinstance(set_config["combine"], list) or not set_config["combine"]:
+                raise ValueError(f"analysis set '{set_name}' combine must be a non-empty list")
+            continue
+        if "sources" not in set_config or not isinstance(set_config["sources"], dict):
+            raise ValueError(f"analysis set '{set_name}' must include sources mapping")
+        if "methods" not in set_config:
+            raise ValueError(f"analysis set '{set_name}' must include methods")
+        if not isinstance(set_config["methods"], list) or not set_config["methods"]:
+            raise ValueError(f"analysis set '{set_name}' methods must be a non-empty list")
     return config
 
 
 def get_methods(analysis_set: dict[str, Any], source_spec: dict[str, Any]) -> list[str]:
-    if "methods" in source_spec:
-        methods = source_spec["methods"]
-    elif "method" in source_spec:
-        methods = [source_spec["method"]]
-    elif "methods" in analysis_set:
-        methods = analysis_set["methods"]
-    elif "method" in analysis_set:
-        methods = [analysis_set["method"]]
-    else:
-        methods = ["timestamp"]
+    methods = source_spec.get("methods", analysis_set["methods"])
     if not isinstance(methods, list) or not methods:
         raise ValueError("methods must be a non-empty list")
     supported_methods = {"timestamp", "modified-time", "exif-created", "exif-modified"}
@@ -191,46 +195,47 @@ def extract_timestamp(
 
 def collect_rows(
     config: dict[str, Any],
-    analysis_key: str,
+    set_name: str,
+    visited_keys: set[str] | None = None,
+) -> pd.DataFrame:
+    set_config = config["analysis_sets"][set_name]
+    if "combine" in set_config:
+        return collect_combined_rows(config, set_name, visited_keys)
+    return collect_single_rows(config, set_name)
+
+
+def collect_combined_rows(
+    config: dict[str, Any],
+    set_name: str,
     visited_keys: set[str] | None = None,
 ) -> pd.DataFrame:
     if visited_keys is None:
         visited_keys = set()
-    if analysis_key in visited_keys:
-        raise ValueError(f"Cyclic combine detected at '{analysis_key}'")
-    if analysis_key not in config["analysis_sets"]:
-        available = list(config["analysis_sets"].keys())
-        raise ValueError(f"Analysis key '{analysis_key}' not found. Available: {available}")
-    analysis_set = config["analysis_sets"][analysis_key]
-    if "combine" in analysis_set:
-        combine_keys = analysis_set["combine"]
-        if not isinstance(combine_keys, list) or not combine_keys:
-            raise ValueError(f"combine for '{analysis_key}' must be a non-empty list")
-        combined_frames = []
-        next_visited = set(visited_keys)
-        next_visited.add(analysis_key)
-        for member_key in combine_keys:
-            member_frame = collect_rows(config, member_key, next_visited)
-            combined_frames.append(member_frame)
-        if not combined_frames:
-            return pd.DataFrame(
-                columns=["source", "analysis", "timestamp", "hour", "day_of_week", "month", "date"]
-            )
-        return pd.concat(combined_frames, ignore_index=True)
+    if set_name in visited_keys:
+        raise ValueError(f"Cyclic combine detected at '{set_name}'")
+    combined_frames = []
+    visited = set(visited_keys)
+    visited.add(set_name)
+    for member_name in config["analysis_sets"][set_name]["combine"]:
+        combined_frames.append(collect_rows(config, member_name, visited))
+    return pd.concat(combined_frames, ignore_index=True)
 
-    patterns = analysis_set.get("patterns", [])
-    anti_patterns = config.get("anti_patterns", []) + analysis_set.get("anti_patterns", [])
+
+def collect_single_rows(config: dict[str, Any], set_name: str) -> pd.DataFrame:
+    set_config = config["analysis_sets"][set_name]
+    patterns = set_config.get("patterns", [])
+    anti_patterns = config.get("anti_patterns", []) + set_config.get("anti_patterns", [])
     columns = ["source", "analysis", "timestamp", "hour", "day_of_week", "month", "date"]
     rows = []
-    for source_name, source_spec in analysis_set["sources"].items():
-        methods = get_methods(analysis_set, source_spec)
+    for source_name, source_spec in set_config["sources"].items():
+        methods = get_methods(set_config, source_spec)
         file_paths = list_image_paths(source_spec, config["extensions"], anti_patterns)
         for file_path in file_paths:
             timestamp = extract_timestamp(file_path, methods, patterns)
             rows.append(
                 {
                     "source": source_name,
-                    "analysis": analysis_key,
+                    "analysis": set_name,
                     "timestamp": timestamp,
                     "hour": timestamp.hour if timestamp else None,
                     "day_of_week": timestamp.weekday() if timestamp else None,
@@ -241,39 +246,35 @@ def collect_rows(
     return pd.DataFrame(rows, columns=columns)
 
 
-def run_analysis(config: dict[str, Any], analysis_key: str, output_dir: str) -> None:
-    dataframe = collect_rows(config, analysis_key)
-    analysis_set = config["analysis_sets"][analysis_key]
-    plot_config = dict(analysis_set.get("plot", {}))
+def run_set(config: dict[str, Any], set_name: str, output_dir: str) -> None:
+    dataframe = collect_rows(config, set_name)
+    plot_config = dict(config["analysis_sets"][set_name].get("plot", {}))
     event_references = plot_config.get("events", [])
     if event_references:
         if not isinstance(event_references, list):
-            raise ValueError(f"plot.events for '{analysis_key}' must be a list")
+            raise ValueError(f"plot.events for '{set_name}' must be a list")
         plot_config["event_items"] = resolve_events(config, event_references)
-    plots.plot_set(dataframe, output_dir, analysis_key, plot_config)
+    plots.plot_set(dataframe, output_dir, set_name, plot_config)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate activity plots")
-    parser.add_argument("--config", default="config.yaml", help="configuration file path")
-    parser.add_argument("--key", help="analysis key to run (required unless --all)")
-    parser.add_argument("--all", action="store_true", help="generate plots for all analysis sets")
-    parser.add_argument("--output-dir", default="images", help="output directory for plots")
+    parser.add_argument("-c", "--config", default="config.yaml", help="configuration file path")
+    parser.add_argument("-k", "--key", help="analysis key to run")
+    parser.add_argument("-o", "--output-dir", default="images", help="output directory for plots")
     args = parser.parse_args()
 
     config = load_config(args.config)
     Path(args.output_dir).mkdir(exist_ok=True)
 
-    if args.all:
-        for analysis_key in config["analysis_sets"]:
-            print(f"Generating plots: {analysis_key}")
-            run_analysis(config, analysis_key, args.output_dir)
+    if not args.key:
+        for set_name in config["analysis_sets"]:
+            print(f"Generating plots: {set_name}")
+            run_set(config, set_name, args.output_dir)
         return
 
-    if not args.key:
-        raise ValueError("--key is required unless --all is used")
     print(f"Generating plots: {args.key}")
-    run_analysis(config, args.key, args.output_dir)
+    run_set(config, args.key, args.output_dir)
 
 
 if __name__ == "__main__":
