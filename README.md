@@ -44,7 +44,7 @@ At the end of 2017, I left that life. I embraced my love of food and cooking and
 
 ### Image Capture Concurrency
 
-<img src="docs/img/combined/timeseries.png" width="100%">
+<img src="docs/img/combined/merged.png" width="100%">
 
 ### Heatmaps
 
@@ -113,12 +113,44 @@ Set a custom output directory via `-o|--output-dir`:
 uv run activity -o images
 ```
 
-The main keys to configure in the config are:
+## Configuration
+
+1. **sources**: these are local paths to image directories
+
+   ```yaml
+   data:
+     camera:
+       label: camera
+       color: "#c95de8"
+       methods:
+         - exif-created
+         - timestamp
+         - modified-time
+       sources:
+         phone:
+           path: ~/Syncthing/Phone/Pictures/DCIM
+         laptop:
+           path: ~/Pictures
+   ```
+
+2. **plotting**: specify the plot for each data source
+
+   ```yaml
+   plots:
+     camera:
+       series:
+         - camera
+       title: Camera Activity
+       value_label: Photos
+       figures:
+         - kind: heatmap_per_source
+           series_key: source
+       events:
+         - milestones
+   ```
 
 
-1. sources: these are local paths to image directories
-
-2. major events for the bands ad markers
+3. **major events**: dates to place the bands and markers
 
    ```yaml
    events:
@@ -131,7 +163,11 @@ The main keys to configure in the config are:
       - phd_defense
    ```
 
+### Notes
 
+The YAML structure adds additional verbosity and line-of-code bloat that cannot be forgiven. It is indeed easier to just run a few small Python/matplotlib scripts to generate these plots. 
+
+This project, like [sanoma](https://github.com/brege/sanoma), is part of a series of datamine-yourself projects that are, at a later date, aiming to converge these tools into a series of collectors.
 
 ## License
 

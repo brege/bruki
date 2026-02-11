@@ -31,47 +31,32 @@ class DataSeriesConfig(BaseModel):
     anti_patterns: list[str] = Field(default_factory=list)
 
 
-class AnalysisSetConfig(BaseModel):
+class PlotConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
-    series: list[str] | None = None
-    combine: list[str] | None = None
-    plot: dict[str, Any] | None = None
+    series: list[str]
+    figures: list[dict[str, Any]] = Field(default_factory=list)
+    events: list[str] = Field(default_factory=list)
     export_csv: str | None = None
-
-    @model_validator(mode="after")
-    def validate_set_shape(self) -> "AnalysisSetConfig":
-        if self.combine is not None:
-            if not self.combine:
-                raise ValueError("combine must be non-empty")
-            return self
-        if self.series is None or not self.series:
-            raise ValueError("series must be non-empty when combine is not set")
-        return self
 
 
 class ConfigModel(BaseModel):
     model_config = ConfigDict(extra="allow")
+    output_dir: str = "images"
     extensions: list[str]
     anti_patterns: list[str] = Field(default_factory=list)
     events: dict[str, Any] = Field(default_factory=dict)
     data: dict[str, DataSeriesConfig]
-    analysis_sets: dict[str, AnalysisSetConfig]
+    plots: dict[str, PlotConfig]
 
     @model_validator(mode="after")
     def validate_analysis_references(self) -> "ConfigModel":
         known_series = set(self.data.keys())
-        for set_name, set_config in self.analysis_sets.items():
-            if set_config.combine is not None:
-                continue
+        for set_name, set_config in self.plots.items():
             missing_series = [
-                series_name
-                for series_name in (set_config.series or [])
-                if series_name not in known_series
+                series_name for series_name in set_config.series if series_name not in known_series
             ]
             if missing_series:
-                raise ValueError(
-                    f"analysis_sets.{set_name} references unknown series: {missing_series}"
-                )
+                raise ValueError(f"plots.{set_name} references unknown series: {missing_series}")
         return self
 
 
@@ -213,36 +198,15 @@ def extract_timestamp(
 def collect_rows(
     config: ConfigModel,
     set_name: str,
-    visited_keys: set[str] | None = None,
 ) -> pd.DataFrame:
-    set_config = config.analysis_sets[set_name]
-    if set_config.combine is not None:
-        return collect_combined_rows(config, set_name, visited_keys)
     return collect_single_rows(config, set_name)
 
 
-def collect_combined_rows(
-    config: ConfigModel,
-    set_name: str,
-    visited_keys: set[str] | None = None,
-) -> pd.DataFrame:
-    if visited_keys is None:
-        visited_keys = set()
-    if set_name in visited_keys:
-        raise ValueError(f"Cyclic combine detected at '{set_name}'")
-    combined_frames = []
-    visited = set(visited_keys)
-    visited.add(set_name)
-    for member_name in config.analysis_sets[set_name].combine or []:
-        combined_frames.append(collect_rows(config, member_name, visited))
-    return pd.concat(combined_frames, ignore_index=True)
-
-
 def collect_single_rows(config: ConfigModel, set_name: str) -> pd.DataFrame:
-    set_config = config.analysis_sets[set_name]
+    set_config = config.plots[set_name]
     columns = ["series", "source", "analysis", "timestamp", "hour", "day_of_week", "month", "date"]
     rows = []
-    for series_name in set_config.series or []:
+    for series_name in set_config.series:
         series_config = config.data[series_name]
         methods = series_config.methods
         patterns = series_config.patterns
@@ -268,38 +232,38 @@ def collect_single_rows(config: ConfigModel, set_name: str) -> pd.DataFrame:
 
 def run_set(config: ConfigModel, set_name: str, output_dir: str) -> None:
     dataframe = collect_rows(config, set_name)
-    set_config = config.analysis_sets[set_name]
+    set_config = config.plots[set_name]
     if set_config.export_csv is not None:
         csv_path = Path(output_dir) / set_config.export_csv
         dataframe.to_csv(csv_path, index=False)
-    if set_config.plot is None:
+    if not set_config.figures:
         return
-    plot_config = dict(set_config.plot)
+    plot_config = set_config.model_dump(mode="python", exclude_none=True)
     event_references = plot_config.get("events", [])
     if event_references:
         plot_config["event_items"] = resolve_events(config, event_references)
-    data_config = {series_name: series.model_dump() for series_name, series in config.data.items()}
-    plots.plot(dataframe, output_dir, set_name, plot_config, data_config)
+    plots.plot(dataframe, output_dir, set_name, plot_config, config.data)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate activity plots")
     parser.add_argument("-c", "--config", default="config.yaml", help="configuration file path")
     parser.add_argument("-k", "--key", help="analysis key to run")
-    parser.add_argument("-o", "--output-dir", default="images", help="output directory for plots")
+    parser.add_argument("-o", "--output-dir", help="override output directory for plots")
     args = parser.parse_args()
 
     config = load_config(args.config)
-    Path(args.output_dir).mkdir(exist_ok=True)
+    output_dir = args.output_dir or config.output_dir
+    Path(output_dir).mkdir(exist_ok=True)
 
     if not args.key:
-        for set_name in config.analysis_sets:
+        for set_name in config.plots:
             print(f"Generating plots: {set_name}")
-            run_set(config, set_name, args.output_dir)
+            run_set(config, set_name, output_dir)
         return
 
     print(f"Generating plots: {args.key}")
-    run_set(config, args.key, args.output_dir)
+    run_set(config, args.key, output_dir)
 
 
 if __name__ == "__main__":

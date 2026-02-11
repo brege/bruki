@@ -22,14 +22,16 @@ def slugify(value: str) -> str:
     return str(value).strip().replace(" ", "-").replace("_", "-")
 
 
-def get_series_spec(data_config: dict[str, dict[str, Any]], series_id: str) -> dict[str, Any]:
+def get_series_spec(data_config: dict[str, Any], series_id: str) -> dict[str, Any]:
     if series_id not in data_config:
         raise ValueError(f"Unknown series '{series_id}'")
     series_config = data_config[series_id]
+    label = series_config["label"] if isinstance(series_config, dict) else series_config.label
+    color = series_config["color"] if isinstance(series_config, dict) else series_config.color
     return {
         "id": series_id,
-        "label": series_config["label"],
-        "color": series_config["color"],
+        "label": label,
+        "color": color,
     }
 
 
@@ -65,7 +67,7 @@ def plot_histogram(
     dataframe: pd.DataFrame,
     figure: dict[str, Any],
     plot_config: dict[str, Any],
-    data_config: dict[str, dict[str, Any]],
+    data_config: dict[str, Any],
     output_dir: Path,
 ) -> None:
     mode = figure["mode"]
@@ -115,7 +117,7 @@ def parse_x_start(figure: dict[str, Any]) -> pd.Timestamp | None:
 def plot_curves(
     dataframe: pd.DataFrame,
     figure: dict[str, Any],
-    data_config: dict[str, dict[str, Any]],
+    data_config: dict[str, Any],
     output_dir: Path,
     event_items: list[dict],
 ) -> None:
@@ -176,7 +178,7 @@ def plot_curves(
 def plot_panel_curves(
     dataframe: pd.DataFrame,
     figure: dict[str, Any],
-    data_config: dict[str, dict[str, Any]],
+    data_config: dict[str, Any],
     output_dir: Path,
     event_items: list[dict],
 ) -> None:
@@ -258,7 +260,7 @@ def render_figures(
     dataframe: pd.DataFrame,
     output_dir: Path,
     plot_config: dict[str, Any],
-    data_config: dict[str, dict[str, Any]],
+    data_config: dict[str, Any],
     event_items: list[dict],
 ) -> None:
     for figure in plot_config["figures"]:
@@ -395,7 +397,7 @@ def plot(
     output_dir: str,
     key: str,
     plot_config: dict | None = None,
-    data_config: dict[str, dict[str, Any]] | None = None,
+    data_config: dict[str, Any] | None = None,
 ) -> None:
     output_path = Path(output_dir)
     clean_data = dataframe.dropna(subset=["timestamp"]).copy()
@@ -427,7 +429,10 @@ def plot(
         day_origin_hour = parse_day_origin_hour(config)
         color_map = None
         if data_config is not None:
-            color_map = {series_id: item["color"] for series_id, item in data_config.items()}
+            color_map = {
+                series_id: (item["color"] if isinstance(item, dict) else item.color)
+                for series_id, item in data_config.items()
+            }
         plot_hourly_stacked(
             clean_data,
             output_dir / "hour.png",
