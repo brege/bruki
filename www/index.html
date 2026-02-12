@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>tagger</title>
+  <link rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/@yaireo/tagify/dist/tagify.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="topbar">
+    <span id="counter">— / —</span>
+    <span id="progress"></span>
+    <span id="hints">j/k · navigate &nbsp;|&nbsp; / or Enter · focus input &nbsp;|&nbsp; Esc · blur</span>
+  </div>
+  <div id="img-wrap"><img id="shot" src="" alt=""></div>
+  <div id="filepath"></div>
+  <div id="tagbar">
+    <input id="tag-input" placeholder="add tags…">
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@yaireo/tagify/dist/tagify.min.js"></script>
+  <script>
+    let items = [], idx = 0, allTags = [], tagify, saving = false;
+
+    const shot     = document.getElementById('shot');
+    const counter  = document.getElementById('counter');
+    const progress = document.getElementById('progress');
+    const filepath = document.getElementById('filepath');
+    const tagbar   = document.getElementById('tagbar');
+
+    async function init() {
+      const [its, tags] = await Promise.all([
+        fetch('/api/items').then(r => r.json()),
+        fetch('/api/tags').then(r => r.json()),
+      ]);
+      items = its;
+      allTags = tags;
+
+      tagify = new Tagify(document.getElementById('tag-input'), {
+        whitelist: [...allTags],
+        dropdown: { enabled: 2, closeOnSelect: false, maxItems: 30 },
+      });
+      tagify.on('add', onTagChange);
+      tagify.on('remove', onTagChange);
+
+      // start at first unlabeled
+      const first = items.findIndex(i => !i.categories?.length);
+      idx = first >= 0 ? first : 0;
+      render();
+    }
+
+    function render() {
+      const item = items[idx];
+      if (!item) return;
+
+      shot.src = `/image?path=${encodeURIComponent(item.input_path)}`;
+      filepath.textContent = item.input_path;
+      counter.textContent  = `${idx + 1} / ${items.length}`;
+
+      const n = items.filter(i => i.categories?.length).length;
+      progress.textContent = `${n} labeled`;
+
+      const tagged = item.categories?.length > 0;
+      tagbar.className = tagged ? 'labeled' : 'unlabeled';
+
+      // load tags without triggering save
+      tagify.off('add', onTagChange);
+      tagify.off('remove', onTagChange);
+      tagify.removeAllTags();
+      if (tagged) tagify.addTags(item.categories);
+      tagify.on('add', onTagChange);
+      tagify.on('remove', onTagChange);
+
+      tagify.settings.whitelist = [...new Set([...allTags, ...(item.categories || [])])];
+    }
+
+    async function onTagChange() {
+      if (saving) return;
+      saving = true;
+      const tags = tagify.value.map(t => t.value);
+      items[idx].categories = tags;
+      tags.forEach(t => { if (!allTags.includes(t)) allTags.push(t); });
+      tagify.settings.whitelist = [...allTags];
+      tagbar.className = tags.length ? 'labeled' : 'unlabeled';
+      const n = items.filter(i => i.categories?.length).length;
+      progress.textContent = `${n} labeled`;
+      await fetch(`/api/item/${idx}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ categories: tags }),
+      });
+      saving = false;
+    }
+
+    function go(dir) {
+      idx = Math.max(0, Math.min(items.length - 1, idx + dir));
+      render();
+    }
+
+    document.addEventListener('keydown', e => {
+      const inInput = document.activeElement === tagify.DOM.input;
+      if (inInput) {
+        if (e.key === 'Escape') { tagify.DOM.input.blur(); e.preventDefault(); }
+        if (e.key === 'Enter' && tagify.state.inputText === '') {
+          tagify.DOM.input.blur();
+          go(1);
+          e.preventDefault();
+        }
+        return;
+      }
+      if (e.key === 'j') go(1);
+      if (e.key === 'k') go(-1);
+      if (e.key === 'Enter' || e.key === '/') {
+        tagify.DOM.input.focus();
+        e.preventDefault();
+      }
+    });
+
+    init();
+  </script>
+  <script>
+    const nativeInput = document.getElementById('tag-input');
+    nativeInput.style.color = '#e8e8e8';
+    nativeInput.style.setProperty('--placeholder-color', '#909090');
+  </script>
+</body>
+</html>
