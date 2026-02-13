@@ -76,6 +76,11 @@ def style():
     return send_file(APP_DIR / "style.css")
 
 
+@app.get("/app.js")
+def app_script():
+    return send_file(APP_DIR / "app.js")
+
+
 @app.get("/api/items")
 def get_items():
     return jsonify([strip_src(i) for i in load_all()])
@@ -103,6 +108,31 @@ def patch_item(idx):
     labels_by_path[items[idx]["input_path"]] = categories
     write_labels(labels_by_path)
     return jsonify(strip_src(items[idx]))
+
+
+@app.post("/api/purge")
+def purge_labels():
+    items = load_all()
+    valid_paths = {item["input_path"] for item in items if "input_path" in item}
+    labels_by_path = read_labels_by_path()
+    before_count = len(labels_by_path)
+    labels_by_path = {
+        input_path: categories
+        for input_path, categories in labels_by_path.items()
+        if input_path in valid_paths
+    }
+    after_count = len(labels_by_path)
+    write_labels(labels_by_path)
+    return jsonify({"removed": before_count - after_count, "remaining": after_count})
+
+
+@app.get("/api/purge-preview")
+def purge_preview():
+    items = load_all()
+    valid_paths = {item["input_path"] for item in items if "input_path" in item}
+    labels_by_path = read_labels_by_path()
+    removed = sorted([input_path for input_path in labels_by_path if input_path not in valid_paths])
+    return jsonify({"remove": removed, "count": len(removed)})
 
 
 @app.get("/image")
