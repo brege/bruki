@@ -11,12 +11,7 @@ const jump     = document.getElementById('jump');
 const total    = document.getElementById('total');
 const filterToggle = document.getElementById('filter-toggle');
 const labelsDropdown = document.getElementById('labels');
-const purgeButton = document.getElementById('purge');
 const gallery = document.getElementById('gallery');
-const modal = document.getElementById('modal');
-const modalBody = document.getElementById('modal-body');
-const modalCancel = document.getElementById('modal-cancel');
-const modalConfirm = document.getElementById('modal-confirm');
 
 async function init() {
   const [its, tags] = await Promise.all([
@@ -73,33 +68,6 @@ async function init() {
     labelsDropdown.value = '';
   });
 
-  purgeButton.addEventListener('click', async () => {
-    const response = await fetch('/api/purge-preview');
-    if (!response.ok) return;
-    const preview = await response.json();
-    if (!preview.remove || !preview.remove.length) {
-      modalBody.textContent = 'Nothing to purge.';
-    } else {
-      const lines = preview.remove.map(path => `<div class="modal-item">${path}</div>`).join('');
-      modalBody.innerHTML = `<div>${preview.count} entries will be removed.</div>${lines}`;
-    }
-    modal.classList.remove('hidden');
-  });
-
-  modalCancel.addEventListener('click', () => {
-    modal.classList.add('hidden');
-  });
-
-  modalConfirm.addEventListener('click', async () => {
-    const response = await fetch('/api/purge', { method: 'POST' });
-    if (!response.ok) return;
-    items = await fetch('/api/items').then(r => r.json());
-    allTags = await fetch('/api/tags').then(r => r.json());
-    tagify.settings.whitelist = [...allTags];
-    modal.classList.add('hidden');
-    render();
-  });
-
   const saved = Number.parseInt(localStorage.getItem('tagger-index') || '', 10);
   idx = Number.isNaN(saved) ? 0 : Math.max(0, Math.min(items.length - 1, saved));
   render();
@@ -152,6 +120,7 @@ async function onTagChange() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ categories: tags }),
   });
+  await fetch('/api/purge', { method: 'POST' });
   saving = false;
 }
 
