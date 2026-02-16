@@ -81,6 +81,11 @@ def app_script():
     return send_file(APP_DIR / "app.js")
 
 
+@app.get("/favicon.svg")
+def favicon():
+    return send_file(APP_DIR / "favicon.svg")
+
+
 @app.get("/api/items")
 def get_items():
     return jsonify([strip_src(i) for i in load_all()])
