@@ -48,6 +48,8 @@ From 2010 to 2017 I was a Physics TA and, following my 2014 physics prelims, a c
 
 At the end of 2017, I left that life. I embraced my love of food and cooking and became a professional chef for a number of years thereafter, including the Covid-19 pandemic. This period of my life saw a greater number of photos taken: pictures of plates, menus, schedules, etc. My camera photos before this time were mostly non-work-related: travel, events, and pets drove image origination.
 
+Internet saves are marked by a few square wave forms here due to the 14 day average. These deltas exist because of wallpaper, landscape, and other online finds that sometimes tend to occur on device changes, but not always.
+
 ### Image Capture Concurrency
 
 <img src="docs/img/combined/sum.png" width="100%">
