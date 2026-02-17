@@ -8,8 +8,12 @@ from flask import Flask, jsonify, render_template, request, send_file
 APP_DIR = Path(__file__).resolve().parent
 app = Flask(__name__, template_folder=str(APP_DIR), static_folder=str(APP_DIR))
 BASE_DIR = Path(os.environ.get("TAGGER_BASE", ".")).resolve()
-JSONL_GLOB = os.environ.get("TAGGER_JSONL", "data/ocr/*/index.jsonl")
-LABELS_PATH = Path(os.environ.get("TAGGER_LABELS", "data/labels.jsonl"))
+STATE_DIR = Path(os.environ.get("TAGGER_STATE_DIR", "www/state"))
+JSONL_GLOB = os.environ.get("TAGGER_JSONL", str(STATE_DIR / "items.jsonl"))
+LABELS_PATH = Path(os.environ.get("TAGGER_LABELS", str(STATE_DIR / "labels.jsonl")))
+# jupyter notebook paths:
+#  JSONL_GLOB = os.environ.get("TAGGER_JSONL", "data/ocr/*/index.jsonl")
+#  LABELS_PATH = Path(os.environ.get("TAGGER_LABELS", "data/labels.jsonl"))
 
 
 def read_jsonl(path):

@@ -73,12 +73,14 @@ body {
   top: 0;
   right: 0;
   bottom: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  align-content: start;
+  gap: 8px;
   overflow-y: auto;
   overflow-x: hidden;
   background: var(--theme-bg-body-dark);
   padding: 10px;
-  column-width: 180px;
-  column-gap: 8px;
   max-width: 100%;
 }
 #gallery.hidden { display: none; }
@@ -89,9 +91,6 @@ body {
   cursor: pointer;
   overflow: hidden;
   background: #1f1f1d;
-  display: inline-block;
-  margin: 0 0 8px;
-  break-inside: avoid;
 }
 #gallery .thumb img {
   width: 100%;
