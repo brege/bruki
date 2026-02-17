@@ -41,7 +41,7 @@ async function fetchJson(url, opts = undefined) {
 }
 
 function labeledCount() {
-  return allItems.filter(item => (item.categories || []).length > 0).length;
+  return allItems.filter((item) => (item.categories || []).length > 0).length;
 }
 
 function clearSelection() {
@@ -60,9 +60,14 @@ function updateBulkBar(selectionModeEnabled, galleryEnabled) {
   bulkCount.textContent = `${n} selected`;
   bulkApply.disabled = n === 0;
   const visibleCount = visibleGalleryItems.length;
-  const selectedVisible = visibleGalleryItems.filter(item => selectedPaths.has(item.input_path)).length;
-  const allVisibleSelected = visibleCount > 0 && selectedVisible === visibleCount;
-  bulkSelectToggle.textContent = allVisibleSelected ? 'select none' : 'select all';
+  const selectedVisible = visibleGalleryItems.filter((item) =>
+    selectedPaths.has(item.input_path),
+  ).length;
+  const allVisibleSelected =
+    visibleCount > 0 && selectedVisible === visibleCount;
+  bulkSelectToggle.textContent = allVisibleSelected
+    ? 'select none'
+    : 'select all';
   bulkSelectToggle.disabled = visibleCount === 0;
   if (!galleryEnabled) {
     bulkExpand.textContent = 'expand';
@@ -78,7 +83,9 @@ function applyClusterFilter(preservePath = true) {
   if (!selectedCluster) {
     items = [...allItems];
   } else {
-    items = allItems.filter(item => String(item.cluster ?? '') === selectedCluster);
+    items = allItems.filter(
+      (item) => String(item.cluster ?? '') === selectedCluster,
+    );
   }
   if (!items.length) {
     idx = 0;
@@ -86,7 +93,7 @@ function applyClusterFilter(preservePath = true) {
     return;
   }
   if (currentPath) {
-    const next = items.findIndex(item => item.input_path === currentPath);
+    const next = items.findIndex((item) => item.input_path === currentPath);
     idx = next >= 0 ? next : Math.min(idx, items.length - 1);
   } else {
     idx = Math.min(idx, items.length - 1);
@@ -101,34 +108,36 @@ async function reloadItems() {
 
 async function applyTagsToSelected() {
   if (saving || selectedPaths.size === 0) return;
-  const tags = tagify.value.map(entry => entry.value);
-  const targets = allItems.filter(item => selectedPaths.has(item.input_path));
+  const tags = tagify.value.map((entry) => entry.value);
+  const targets = allItems.filter((item) => selectedPaths.has(item.input_path));
   if (!targets.length) return;
 
   saving = true;
   try {
-    tags.forEach(tag => {
+    tags.forEach((tag) => {
       if (!allTags.includes(tag)) allTags.push(tag);
     });
     tagify.settings.whitelist = [...allTags];
 
-    targets.forEach(item => {
+    targets.forEach((item) => {
       item.categories = [...tags];
     });
-    items.forEach(item => {
+    items.forEach((item) => {
       if (selectedPaths.has(item.input_path)) {
         item.categories = [...tags];
       }
     });
 
     const responses = await Promise.all(
-      targets.map(item => fetch(`/api/item/${item._idx}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ categories: tags }),
-      })),
+      targets.map((item) =>
+        fetch(`/api/item/${item._idx}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ categories: tags }),
+        }),
+      ),
     );
-    if (responses.some(response => !response.ok)) {
+    if (responses.some((response) => !response.ok)) {
       throw new Error('bulk tag apply failed');
     }
     progress.textContent = `${labeledCount()} labeled`;
@@ -143,9 +152,10 @@ async function applyTagsToSelected() {
 function renderClusterDropdown(clusters) {
   const current = selectedCluster;
   const options = ['<option value="">all clusters</option>'].concat(
-    (clusters || []).map(cluster => (
-      `<option value="${cluster.id}">c${cluster.id} (${cluster.count})</option>`
-    )),
+    (clusters || []).map(
+      (cluster) =>
+        `<option value="${cluster.id}">c${cluster.id} (${cluster.count})</option>`,
+    ),
   );
   clustersDropdown.innerHTML = options.join('');
   clustersDropdown.value = current;
@@ -191,7 +201,7 @@ function formatSourceStats(status) {
     return roots.join(' | ');
   }
   return stats
-    .map(row => `${row.series}/${row.source}: ${row.count}`)
+    .map((row) => `${row.series}/${row.source}: ${row.count}`)
     .join(' | ');
 }
 
@@ -216,14 +226,20 @@ async function refreshMlStatus() {
   lastMlStatusKey = statusKey;
 
   if (stage === 'embedding' || stage === 'clustering' || stage === 'scanning') {
-    mlPollDelayMs = changed ? 3000 : Math.min(Math.round(mlPollDelayMs * 1.5), 15000);
+    mlPollDelayMs = changed
+      ? 3000
+      : Math.min(Math.round(mlPollDelayMs * 1.5), 15000);
     return;
   }
   if (stage === 'done' || stage === 'error') {
-    mlPollDelayMs = changed ? 10000 : Math.min(Math.round(mlPollDelayMs * 2), 120000);
+    mlPollDelayMs = changed
+      ? 10000
+      : Math.min(Math.round(mlPollDelayMs * 2), 120000);
     return;
   }
-  mlPollDelayMs = changed ? 5000 : Math.min(Math.round(mlPollDelayMs * 1.5), 60000);
+  mlPollDelayMs = changed
+    ? 5000
+    : Math.min(Math.round(mlPollDelayMs * 1.5), 60000);
 }
 
 async function pollMlStatus() {
@@ -263,7 +279,7 @@ async function init() {
     document.execCommand('selectAll', false, null);
   });
 
-  jump.addEventListener('keydown', event => {
+  jump.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
       const target = Number.parseInt(jump.textContent, 10);
       if (!Number.isNaN(target)) {
@@ -306,19 +322,24 @@ async function init() {
   });
 
   bulkSelectToggle.addEventListener('click', () => {
-    const visible = visibleGalleryItems.map(item => item.input_path);
-    const selectedVisible = visible.filter(path => selectedPaths.has(path));
-    const allVisibleSelected = visible.length > 0 && selectedVisible.length === visible.length;
+    const visible = visibleGalleryItems.map((item) => item.input_path);
+    const selectedVisible = visible.filter((path) => selectedPaths.has(path));
+    const allVisibleSelected =
+      visible.length > 0 && selectedVisible.length === visible.length;
     if (allVisibleSelected) {
-      visible.forEach(path => selectedPaths.delete(path));
+      visible.forEach((path) => {
+        selectedPaths.delete(path);
+      });
     } else {
-      visible.forEach(path => selectedPaths.add(path));
+      visible.forEach((path) => {
+        selectedPaths.add(path);
+      });
     }
     renderGallery();
   });
 
   bulkApply.addEventListener('click', () => {
-    applyTagsToSelected().catch(error => {
+    applyTagsToSelected().catch((error) => {
       console.error(error);
     });
   });
@@ -334,7 +355,9 @@ async function init() {
   });
 
   const saved = Number.parseInt(localStorage.getItem('tagger-index') || '', 10);
-  idx = Number.isNaN(saved) ? 0 : Math.max(0, Math.min(items.length - 1, saved));
+  idx = Number.isNaN(saved)
+    ? 0
+    : Math.max(0, Math.min(items.length - 1, saved));
   render();
 
   await initMl();
@@ -373,7 +396,9 @@ function render() {
   tagify.on('add', onTagChange);
   tagify.on('remove', onTagChange);
 
-  tagify.settings.whitelist = [...new Set([...allTags, ...(item.categories || [])])];
+  tagify.settings.whitelist = [
+    ...new Set([...allTags, ...(item.categories || [])]),
+  ];
   renderLabelsDropdown();
   renderGallery();
 }
@@ -381,7 +406,7 @@ function render() {
 async function onTagChange() {
   if (saving) return;
   if (selectedPaths.size > 0) {
-    await applyTagsToSelected().catch(error => {
+    await applyTagsToSelected().catch((error) => {
       console.error(error);
     });
     return;
@@ -394,13 +419,13 @@ async function onTagChange() {
   if (!item) return;
   saving = true;
   try {
-    const tags = tagify.value.map(entry => entry.value);
+    const tags = tagify.value.map((entry) => entry.value);
     item.categories = tags;
     const rowIdx = item._idx;
     if (Number.isInteger(rowIdx) && allItems[rowIdx]) {
       allItems[rowIdx].categories = tags;
     }
-    tags.forEach(tag => {
+    tags.forEach((tag) => {
       if (!allTags.includes(tag)) allTags.push(tag);
     });
     tagify.settings.whitelist = [...allTags];
@@ -426,8 +451,8 @@ function go(delta) {
 
 function renderLabelsDropdown() {
   const counts = {};
-  allItems.forEach(item => {
-    (item.categories || []).forEach(category => {
+  allItems.forEach((item) => {
+    (item.categories || []).forEach((category) => {
       counts[category] = (counts[category] || 0) + 1;
     });
   });
@@ -437,7 +462,12 @@ function renderLabelsDropdown() {
     return left.localeCompare(right);
   });
   labelsDropdown.innerHTML = ['<option value="">labels</option>']
-    .concat(labels.map(label => `<option value="${label}">${label} (${counts[label]})</option>`))
+    .concat(
+      labels.map(
+        (label) =>
+          `<option value="${label}">${label} (${counts[label]})</option>`,
+      ),
+    )
     .join('');
 }
 
@@ -456,10 +486,12 @@ function renderGallery() {
     updateBulkBar(selectionModeEnabled, false);
     return;
   }
-  const selected = tagify.value.map(entry => entry.value);
+  const selected = tagify.value.map((entry) => entry.value);
   let matches = [];
   if (selected.length) {
-    matches = items.filter(item => selected.every(tag => (item.categories || []).includes(tag)));
+    matches = items.filter((item) =>
+      selected.every((tag) => (item.categories || []).includes(tag)),
+    );
   } else if (clusterGallery) {
     matches = items;
   } else {
@@ -472,18 +504,22 @@ function renderGallery() {
     return;
   }
   visibleGalleryItems = matches;
-  const visiblePaths = new Set(matches.map(item => item.input_path));
-  selectedPaths = new Set([...selectedPaths].filter(path => visiblePaths.has(path)));
+  const visiblePaths = new Set(matches.map((item) => item.input_path));
+  selectedPaths = new Set(
+    [...selectedPaths].filter((path) => visiblePaths.has(path)),
+  );
   shot.classList.add('hidden');
   gallery.classList.remove('hidden');
   gallery.classList.toggle('expanded', galleryExpanded);
   gallery.innerHTML = matches
-    .map(item => (
-      `<div class="thumb${selectedPaths.has(item.input_path) ? ' selected' : ''}" data-path="${item.input_path}">
+    .map(
+      (
+        item,
+      ) => `<div class="thumb${selectedPaths.has(item.input_path) ? ' selected' : ''}" data-path="${item.input_path}">
         <button class="check" type="button">${selectedPaths.has(item.input_path) ? '✓' : ''}</button>
         <img src="/image?path=${encodeURIComponent(item.input_path)}" alt="">
-      </div>`
-    ))
+      </div>`,
+    )
     .join('');
 
   const thumbs = Array.from(gallery.querySelectorAll('.thumb'));
@@ -500,15 +536,19 @@ function renderGallery() {
 
     const onHover = () => {
       galleryIndex = thumbIdx;
-      thumbs.forEach(node => node.classList.remove('active'));
+      thumbs.forEach((node) => {
+        node.classList.remove('active');
+      });
       thumb.classList.add('active');
       const path = matches[thumbIdx].input_path;
       filepath.textContent = path;
-      jump.textContent = String(items.findIndex(item => item.input_path === path) + 1);
+      jump.textContent = String(
+        items.findIndex((item) => item.input_path === path) + 1,
+      );
     };
     thumb.addEventListener('mouseenter', onHover);
     thumb.addEventListener('focus', onHover);
-    thumb.addEventListener('click', event => {
+    thumb.addEventListener('click', (event) => {
       const path = matches[thumbIdx].input_path;
       const dotClicked = event.target.closest('.check') !== null;
       const additive = event.ctrlKey || event.metaKey || dotClicked;
@@ -528,14 +568,16 @@ function renderGallery() {
         } else {
           if (!additive && !ranged) {
             selectedPaths.clear();
-            thumbs.forEach(node => setThumbSelected(node, false));
+            thumbs.forEach((node) => {
+              setThumbSelected(node, false);
+            });
           }
           selectedPaths.add(path);
           setThumbSelected(thumb, true);
         }
         selectionAnchorIndex = thumbIdx;
       } else {
-        const nextIndex = items.findIndex(item => item.input_path === path);
+        const nextIndex = items.findIndex((item) => item.input_path === path);
         if (nextIndex >= 0) {
           idx = nextIndex;
           forceSingleView = true;
@@ -547,7 +589,7 @@ function renderGallery() {
     });
     thumb.addEventListener('dblclick', () => {
       const path = matches[thumbIdx].input_path;
-      const nextIndex = items.findIndex(item => item.input_path === path);
+      const nextIndex = items.findIndex((item) => item.input_path === path);
       if (nextIndex < 0) return;
       idx = nextIndex;
       clearSelection();
@@ -564,7 +606,7 @@ function renderGallery() {
   updateBulkBar(selectionModeEnabled, true);
 }
 
-document.addEventListener('keydown', event => {
+document.addEventListener('keydown', (event) => {
   const inInput = tagify && document.activeElement === tagify.DOM.input;
   const inJump = document.activeElement === jump;
   if (inJump) return;
@@ -586,14 +628,19 @@ document.addEventListener('keydown', event => {
     if (event.key === 'j' || event.key === 'k') {
       const thumbs = Array.from(gallery.querySelectorAll('.thumb'));
       if (thumbs.length) {
-        if (event.key === 'j') galleryIndex = Math.min(thumbs.length - 1, galleryIndex + 1);
+        if (event.key === 'j')
+          galleryIndex = Math.min(thumbs.length - 1, galleryIndex + 1);
         if (event.key === 'k') galleryIndex = Math.max(0, galleryIndex - 1);
-        thumbs.forEach(node => node.classList.remove('active'));
+        thumbs.forEach((node) => {
+          node.classList.remove('active');
+        });
         const target = thumbs[galleryIndex];
         target.classList.add('active');
         const path = target.getAttribute('data-path');
         filepath.textContent = path;
-        jump.textContent = String(items.findIndex(item => item.input_path === path) + 1);
+        jump.textContent = String(
+          items.findIndex((item) => item.input_path === path) + 1,
+        );
         event.preventDefault();
         return;
       }
