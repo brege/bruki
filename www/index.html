@@ -6,39 +6,46 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="stylesheet"
     href="https://cdn.jsdelivr.net/npm/@yaireo/tagify/dist/tagify.css">
-  <link rel="stylesheet" href="/style.css?v=7">
+  <link rel="stylesheet" href="/style.css?v=13">
 </head>
 <body>
   <div id="topbar">
     <span id="counter"><button id="jump" type="button">—</button> / <span id="total">—</span></span>
     <span id="progress"></span>
-    <select id="clusters">
-      <option value="">all clusters</option>
-    </select>
+    <span id="selection-controls">
+      <span id="bulk-count">0 selected</span>
+      <button id="bulk-select-toggle" type="button">select all</button>
+      <button id="bulk-expand" type="button">collapse</button>
+    </span>
     <span id="hints">j/k · navigate &nbsp;|&nbsp; / or Enter · focus</span>
   </div>
   <div id="ml-panel">
     <span id="ml-status">ml: idle</span>
     <span id="ml-sources"></span>
   </div>
-  <div id="bulkbar" class="hidden">
-    <span id="bulk-count">0 selected</span>
-    <button id="bulk-select-toggle" type="button">select all</button>
-    <button id="bulk-apply" type="button">apply tags</button>
-    <button id="bulk-expand" type="button">collapse</button>
-  </div>
   <div id="img-wrap">
     <img id="shot" src="" alt="">
     <div id="gallery" class="hidden"></div>
   </div>
-  <div id="filepath"></div>
+  <div id="filepath">
+    <span id="filepath-path"></span>
+    <span id="filepath-labels"></span>
+  </div>
   <div id="tagbar">
+    <select id="clusters">
+      <option value="">all clusters</option>
+    </select>
     <input id="tag-input" placeholder="add tags…">
     <button id="filter-toggle" type="button">filter</button>
-    <select id="labels"></select>
+    <select id="tags-scope">
+      <option value="__any__">any tags</option>
+      <option value="__none__">no tags</option>
+      <option value="__sep__" disabled>---------</option>
+    </select>
+    <button id="apply-tags" type="button">apply tags</button>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@yaireo/tagify/dist/tagify.min.js"></script>
-  <script src="/app.js?v=8"></script>
+  <script src="/app.js?v=17"></script>
 </body>
 </html>

@@ -16,31 +16,42 @@ let mlPollDelayMs = 3000;
 let mlPollTimer = null;
 let forceSingleView = false;
 let galleryExpanded = false;
+let tagScope = '__any__';
 
 const shot = document.getElementById('shot');
 const progress = document.getElementById('progress');
-const filepath = document.getElementById('filepath');
+const filepathPath = document.getElementById('filepath-path');
+const filepathLabels = document.getElementById('filepath-labels');
 const tagbar = document.getElementById('tagbar');
 const jump = document.getElementById('jump');
 const total = document.getElementById('total');
 const filterToggle = document.getElementById('filter-toggle');
-const labelsDropdown = document.getElementById('labels');
+const tagsScopeDropdown = document.getElementById('tags-scope');
 const clustersDropdown = document.getElementById('clusters');
 const gallery = document.getElementById('gallery');
 const mlStatus = document.getElementById('ml-status');
 const mlSources = document.getElementById('ml-sources');
-const bulkbar = document.getElementById('bulkbar');
+const selectionControls = document.getElementById('selection-controls');
 const bulkCount = document.getElementById('bulk-count');
 const bulkSelectToggle = document.getElementById('bulk-select-toggle');
-const bulkApply = document.getElementById('bulk-apply');
 const bulkExpand = document.getElementById('bulk-expand');
+const applyTagsButton = document.getElementById('apply-tags');
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
 
 async function fetchJson(url, opts = undefined) {
   const response = await fetch(url, opts);
   return response.json();
 }
 
-function labeledCount() {
+function taggedCount() {
   return allItems.filter((item) => (item.categories || []).length > 0).length;
 }
 
@@ -49,16 +60,21 @@ function clearSelection() {
   selectionAnchorIndex = -1;
 }
 
-function updateBulkBar(selectionModeEnabled, galleryEnabled) {
-  if (!selectionModeEnabled) {
-    bulkbar.classList.add('hidden');
-    bulkCount.textContent = '0 selected';
+function setFilepath(pathText, categories = []) {
+  filepathPath.textContent = pathText || '';
+  if (!Array.isArray(categories) || categories.length === 0) {
+    filepathLabels.textContent = '';
     return;
   }
-  bulkbar.classList.remove('hidden');
+  filepathLabels.textContent = categories.join(', ');
+}
+
+function updateBulkBar(selectionModeEnabled, galleryEnabled) {
+  void selectionModeEnabled;
+  selectionControls.classList.remove('hidden');
   const n = selectedPaths.size;
   bulkCount.textContent = `${n} selected`;
-  bulkApply.disabled = n === 0;
+  applyTagsButton.disabled = filterMode;
   const visibleCount = visibleGalleryItems.length;
   const selectedVisible = visibleGalleryItems.filter((item) =>
     selectedPaths.has(item.input_path),
@@ -68,25 +84,75 @@ function updateBulkBar(selectionModeEnabled, galleryEnabled) {
   bulkSelectToggle.textContent = allVisibleSelected
     ? 'select none'
     : 'select all';
-  bulkSelectToggle.disabled = visibleCount === 0;
+  bulkSelectToggle.disabled = visibleCount === 0 || !galleryEnabled;
   if (!galleryEnabled) {
     bulkExpand.textContent = 'expand';
+    bulkExpand.disabled = visibleCount === 0;
   } else {
     bulkExpand.textContent = galleryExpanded ? 'collapse' : 'expand';
+    bulkExpand.disabled = false;
   }
+}
+
+async function applyTagsToCurrentImage() {
+  if (saving || filterMode) return;
+  const item = items[idx];
+  if (!item) return;
+  saving = true;
+  try {
+    const tags = tagify.value.map((entry) => entry.value);
+    item.categories = tags;
+    const rowIdx = item._idx;
+    if (Number.isInteger(rowIdx) && allItems[rowIdx]) {
+      allItems[rowIdx].categories = tags;
+    }
+    tags.forEach((tag) => {
+      if (!allTags.includes(tag)) allTags.push(tag);
+    });
+    tagify.settings.whitelist = [...allTags];
+    tagbar.className = tags.length ? 'labeled' : 'unlabeled';
+    progress.textContent = `${taggedCount()} tagged`;
+    const response = await fetch(`/api/item/${rowIdx}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ categories: tags }),
+    });
+    if (!response.ok) {
+      throw new Error('single tag apply failed');
+    }
+    applyClusterFilter(true);
+  } finally {
+    saving = false;
+  }
+}
+
+async function applyTags() {
+  if (filterMode) return;
+  if (selectedPaths.size > 0) {
+    await applyTagsToSelected();
+    return;
+  }
+  await applyTagsToCurrentImage();
 }
 
 function applyClusterFilter(preservePath = true) {
   const currentPath = preservePath ? items[idx]?.input_path : '';
   clearSelection();
   forceSingleView = false;
-  if (!selectedCluster) {
-    items = [...allItems];
-  } else {
-    items = allItems.filter(
+  let scoped = [...allItems];
+  if (tagScope === '__none__') {
+    scoped = scoped.filter((item) => (item.categories || []).length === 0);
+  } else if (tagScope !== '__any__') {
+    scoped = scoped.filter((item) =>
+      (item.categories || []).includes(tagScope),
+    );
+  }
+  if (selectedCluster) {
+    scoped = scoped.filter(
       (item) => String(item.cluster ?? '') === selectedCluster,
     );
   }
+  items = scoped;
   if (!items.length) {
     idx = 0;
     render();
@@ -140,10 +206,10 @@ async function applyTagsToSelected() {
     if (responses.some((response) => !response.ok)) {
       throw new Error('bulk tag apply failed');
     }
-    progress.textContent = `${labeledCount()} labeled`;
-    renderLabelsDropdown();
+    progress.textContent = `${taggedCount()} tagged`;
+    renderTagsScopeDropdown();
     clearSelection();
-    renderGallery();
+    applyClusterFilter(true);
   } finally {
     saving = false;
   }
@@ -264,6 +330,7 @@ async function init() {
   allItems = all;
   allTags = tags;
   items = [...allItems];
+  renderTagsScopeDropdown();
 
   tagify = new Tagify(document.getElementById('tag-input'), {
     whitelist: [...allTags],
@@ -309,11 +376,10 @@ async function init() {
     render();
   });
 
-  labelsDropdown.addEventListener('change', () => {
-    const selected = labelsDropdown.value;
-    if (!selected) return;
-    tagify.addTags([selected]);
-    labelsDropdown.value = '';
+  tagsScopeDropdown.addEventListener('change', () => {
+    const selected = tagsScopeDropdown.value || '__any__';
+    tagScope = selected;
+    applyClusterFilter(true);
   });
 
   clustersDropdown.addEventListener('change', () => {
@@ -338,8 +404,8 @@ async function init() {
     renderGallery();
   });
 
-  bulkApply.addEventListener('click', () => {
-    applyTagsToSelected().catch((error) => {
+  applyTagsButton.addEventListener('click', () => {
+    applyTags().catch((error) => {
       console.error(error);
     });
   });
@@ -365,82 +431,54 @@ async function init() {
 
 function render() {
   total.textContent = String(items.length);
-  progress.textContent = `${labeledCount()} labeled`;
+  progress.textContent = `${taggedCount()} tagged`;
 
   const item = items[idx];
   if (!item) {
     shot.src = '';
-    filepath.textContent = selectedCluster
-      ? `no images in cluster c${selectedCluster}`
-      : 'no images';
+    setFilepath(
+      selectedCluster
+        ? `no images in cluster c${selectedCluster}`
+        : 'no images',
+      [],
+    );
     jump.textContent = '0';
     tagbar.className = 'unlabeled';
     tagify.removeAllTags();
-    renderLabelsDropdown();
+    renderTagsScopeDropdown();
     renderGallery();
     return;
   }
 
   shot.src = `/image?path=${encodeURIComponent(item.input_path)}`;
-  filepath.textContent = item.input_path;
+  setFilepath(item.input_path, item.categories || []);
   jump.textContent = filterMode ? '' : String(idx + 1);
   localStorage.setItem('tagger-index', String(idx));
 
   const tagged = (item.categories || []).length > 0;
   tagbar.className = tagged ? 'labeled' : 'unlabeled';
 
-  tagify.off('add', onTagChange);
-  tagify.off('remove', onTagChange);
-  tagify.removeAllTags();
-  if (tagged) tagify.addTags(item.categories);
-  tagify.on('add', onTagChange);
-  tagify.on('remove', onTagChange);
+  if (!filterMode) {
+    tagify.off('add', onTagChange);
+    tagify.off('remove', onTagChange);
+    tagify.removeAllTags();
+    if (tagged) tagify.addTags(item.categories);
+    tagify.on('add', onTagChange);
+    tagify.on('remove', onTagChange);
+  }
 
   tagify.settings.whitelist = [
     ...new Set([...allTags, ...(item.categories || [])]),
   ];
-  renderLabelsDropdown();
+  renderTagsScopeDropdown();
   renderGallery();
 }
 
 async function onTagChange() {
-  if (saving) return;
-  if (selectedPaths.size > 0) {
-    await applyTagsToSelected().catch((error) => {
-      console.error(error);
-    });
-    return;
-  }
+  if (saving || !filterMode) return;
   if (filterMode) {
     renderGallery();
     return;
-  }
-  const item = items[idx];
-  if (!item) return;
-  saving = true;
-  try {
-    const tags = tagify.value.map((entry) => entry.value);
-    item.categories = tags;
-    const rowIdx = item._idx;
-    if (Number.isInteger(rowIdx) && allItems[rowIdx]) {
-      allItems[rowIdx].categories = tags;
-    }
-    tags.forEach((tag) => {
-      if (!allTags.includes(tag)) allTags.push(tag);
-    });
-    tagify.settings.whitelist = [...allTags];
-    tagbar.className = tags.length ? 'labeled' : 'unlabeled';
-    progress.textContent = `${labeledCount()} labeled`;
-    const response = await fetch(`/api/item/${rowIdx}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ categories: tags }),
-    });
-    if (!response.ok) {
-      throw new Error('single tag apply failed');
-    }
-  } finally {
-    saving = false;
   }
 }
 
@@ -449,26 +487,36 @@ function go(delta) {
   render();
 }
 
-function renderLabelsDropdown() {
+function renderTagsScopeDropdown() {
   const counts = {};
   allItems.forEach((item) => {
     (item.categories || []).forEach((category) => {
       counts[category] = (counts[category] || 0) + 1;
     });
   });
-  const labels = Object.keys(counts).sort((left, right) => {
+  const tags = Object.keys(counts).sort((left, right) => {
     const diff = (counts[right] || 0) - (counts[left] || 0);
     if (diff !== 0) return diff;
     return left.localeCompare(right);
   });
-  labelsDropdown.innerHTML = ['<option value="">labels</option>']
+  tagsScopeDropdown.innerHTML = [
+    '<option value="__any__">any tags</option>',
+    '<option value="__none__">no tags</option>',
+    '<option value="__sep__" disabled>---------</option>',
+  ]
     .concat(
-      labels.map(
-        (label) =>
-          `<option value="${label}">${label} (${counts[label]})</option>`,
+      tags.map(
+        (tag) =>
+          `<option value="${escapeHtml(tag)}">${escapeHtml(tag)} (${counts[tag]})</option>`,
       ),
     )
     .join('');
+  const hasCurrent =
+    tagScope === '__any__' ||
+    tagScope === '__none__' ||
+    Object.hasOwn(counts, tagScope);
+  if (!hasCurrent) tagScope = '__any__';
+  tagsScopeDropdown.value = tagScope;
 }
 
 function renderGallery() {
@@ -486,15 +534,14 @@ function renderGallery() {
     updateBulkBar(selectionModeEnabled, false);
     return;
   }
-  const selected = tagify.value.map((entry) => entry.value);
-  let matches = [];
-  if (selected.length) {
-    matches = items.filter((item) =>
+  const selected = filterMode ? tagify.value.map((entry) => entry.value) : [];
+  let matches = items;
+  if (filterMode && selected.length) {
+    matches = matches.filter((item) =>
       selected.every((tag) => (item.categories || []).includes(tag)),
     );
-  } else if (clusterGallery) {
-    matches = items;
-  } else {
+  }
+  if (!clusterGallery && !filterMode) {
     gallery.classList.add('hidden');
     gallery.innerHTML = '';
     shot.classList.remove('hidden');
@@ -540,8 +587,9 @@ function renderGallery() {
         node.classList.remove('active');
       });
       thumb.classList.add('active');
-      const path = matches[thumbIdx].input_path;
-      filepath.textContent = path;
+      const hovered = matches[thumbIdx];
+      const path = hovered.input_path;
+      setFilepath(path, hovered.categories || []);
       jump.textContent = String(
         items.findIndex((item) => item.input_path === path) + 1,
       );
@@ -637,7 +685,8 @@ document.addEventListener('keydown', (event) => {
         const target = thumbs[galleryIndex];
         target.classList.add('active');
         const path = target.getAttribute('data-path');
-        filepath.textContent = path;
+        const activeItem = items.find((item) => item.input_path === path);
+        setFilepath(path, activeItem?.categories || []);
         jump.textContent = String(
           items.findIndex((item) => item.input_path === path) + 1,
         );
