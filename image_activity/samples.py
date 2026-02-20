@@ -1,19 +1,11 @@
 #!/usr/bin/env python3
 
 import argparse
-import importlib
 import random
 import shutil
-import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-_activity = importlib.import_module("image_activity.activity")
-list_image_paths = _activity.list_image_paths
-load_config = _activity.load_config
+from image_activity.activity import list_image_paths, load_config
 
 
 def parse_args() -> argparse.Namespace:

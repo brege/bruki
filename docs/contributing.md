@@ -6,7 +6,7 @@
 |:------------ |:---------------------- |:----------- |
 | `nbstripout` | `.ipynb` | don't commit any Jupyter notebook outputs |
 | `nbqa`       | `.ipynb` | opinionated notebook linter (preserves aligned '=' cells) |
-| `ruff`       | `.py`    | general purpose python linter, formatter, and type checker |
+| `ruff`       | `.py`    | general purpose python linter and formatter |
 | `biome`      | `.js`, `.css`, `.html` | formats client-side code |
 
 ### Architecture
@@ -34,5 +34,4 @@ www/api.py                   Flask app; the only runtime entry point
 
 - **Pydantic** is the config contract. All YAML input is validated through `ConfigModel` at load time. Do not re-validate or re-parse config downstream.
 
-- **pandas** is the data layer for anything involving image records, timestamps, or aggregations. Do not manipulate JSONL rows as raw dicts where a DataFrame applies — groupby, reindex, and rolling belong in pandas, not in hand-rolled loops over JSON.
-
+- **pandas** is the data layer for anything involving image records, timestamps, or aggregations in the notebook, and sometimes in the app code. Manipulate JSON structures through and around the Flask API code only.

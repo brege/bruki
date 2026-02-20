@@ -46,7 +46,7 @@ This effort involves evolving part of this project into a web app that automatic
 
 1. Generate a reproducible screenshot sample for manual labels.
    ```bash
-   uv run python -m ml.samples --seed 42 --samples 200
+   uv run python -m image_activity.samples --seed 42 --samples 200
    ```
 
 2. Launch the labeling app and label the sample.
@@ -57,7 +57,7 @@ This effort involves evolving part of this project into a web app that automatic
 
 3. The notebook analysis compares your manual labels with OCR and CLIP clustering.
    ```bash
-   jupyter notebook ml/classify.ipynb
+   jupyter notebook notebook.ipynb
    ```
 
 The web app stores labels in `www/state/labels.jsonl`, and notebook experiments can be rerun as this file grows.
