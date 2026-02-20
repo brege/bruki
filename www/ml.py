@@ -107,6 +107,7 @@ def embed_images(
 ) -> np.ndarray:
     import torch
     from PIL import Image
+    from tqdm import tqdm
     from transformers import CLIPModel, CLIPProcessor
 
     del batch_size
@@ -123,39 +124,47 @@ def embed_images(
     model.to("cpu")
 
     total = len(paths)
-    started = time.time()
     vectors: list[np.ndarray] = []
     skipped = 0
     min_size = 10
+    status_every_images = 10
+    status_every_seconds = 0.5
+    last_status_time = 0.0
+    with tqdm(total=total, desc="embedding") as progress:
+        for index, path_str in enumerate(paths, start=1):
+            with Image.open(path_str) as image:
+                if image.size[0] < min_size or image.size[1] < min_size:
+                    skipped += 1
+                    vectors.append(np.zeros(768, dtype=np.float32))
+                else:
+                    inputs = processor(images=image.convert("RGB"), return_tensors="pt")
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                        vec = outputs.pooler_output.squeeze(0).cpu().numpy().astype(np.float32)
+                    vectors.append(vec)
 
-    def report_progress(index: int) -> None:
-        elapsed = max(time.time() - started, 1e-9)
-        rate = index / elapsed
-        eta_seconds = int((total - index) / rate) if rate > 0 else 0
-        update_status(
-            status_path,
-            stage="embedding",
-            processed_images=index,
-            total_images=total,
-            skipped_images=skipped,
-            rate_images_per_second=round(rate, 3),
-            eta_seconds=eta_seconds,
-        )
-
-    for index, path_str in enumerate(paths, start=1):
-        with Image.open(path_str) as image:
-            if image.size[0] < min_size or image.size[1] < min_size:
-                skipped += 1
-                vectors.append(np.zeros(768, dtype=np.float32))
-                report_progress(index)
-                continue
-            inputs = processor(images=image.convert("RGB"), return_tensors="pt")
-
-        with torch.no_grad():
-            outputs = model(**inputs)
-            vec = outputs.pooler_output.squeeze(0).cpu().numpy().astype(np.float32)
-        vectors.append(vec)
-        report_progress(index)
+            progress.update(1)
+            now = time.time()
+            should_report = (
+                index == total
+                or index % status_every_images == 0
+                or (now - last_status_time) >= status_every_seconds
+            )
+            if should_report:
+                rate = progress.format_dict.get("rate") or 0.0
+                remaining = max(total - progress.n, 0)
+                eta_seconds = int(remaining / rate) if rate > 0 else 0
+                progress.set_postfix(skipped=skipped, rate=f"{rate:.3f}/s", eta=eta_seconds)
+                update_status(
+                    status_path,
+                    stage="embedding",
+                    processed_images=index,
+                    total_images=total,
+                    skipped_images=skipped,
+                    rate_images_per_second=round(rate, 3),
+                    eta_seconds=eta_seconds,
+                )
+                last_status_time = now
 
     return np.vstack(vectors).astype(np.float32)
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,20 @@ MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 HOUR_LABELS = [f"{hour:02d}" for hour in range(24)]
 
 
+@dataclass(frozen=True)
+class SeriesSpec:
+    label: str
+    color: str
+
+
+@dataclass(frozen=True)
+class CurvePanelData:
+    series: list[tuple[SeriesSpec, pd.DataFrame]]
+    max_count: int
+    active_start: pd.Timestamp | None
+    active_end: pd.Timestamp | None
+
+
 def set_plot_style() -> None:
     plt.style.use("default")
     sns.set_palette("colorblind")
@@ -20,17 +35,6 @@ def set_plot_style() -> None:
 
 def slugify(value: str) -> str:
     return str(value).strip().replace(" ", "-").replace("_", "-")
-
-
-def get_series_spec(data_config: dict[str, Any], series_id: str) -> dict[str, Any]:
-    if series_id not in data_config:
-        raise ValueError(f"Unknown series '{series_id}'")
-    series_config = data_config[series_id]
-    return {
-        "id": series_id,
-        "label": series_config["label"],
-        "color": series_config["color"],
-    }
 
 
 def select_series_data(dataframe: pd.DataFrame, series_id: str) -> pd.DataFrame:
@@ -65,7 +69,7 @@ def plot_histogram(
     dataframe: pd.DataFrame,
     figure: dict[str, Any],
     plot_config: dict[str, Any],
-    data_config: dict[str, Any],
+    data_config: dict[str, SeriesSpec],
     output_dir: Path,
 ) -> None:
     mode = figure["mode"]
@@ -74,11 +78,13 @@ def plot_histogram(
     stacked_data: dict[str, pd.Series] = {}
     colors: list[str] = []
     for series_id in figure["series"]:
-        series_spec = get_series_spec(data_config, series_id)
+        if series_id not in data_config:
+            raise ValueError(f"Unknown series '{series_id}'")
+        series_spec = data_config[series_id]
         series_data = select_series_data(dataframe, series_id)
         counts = series_data.groupby(column).size().reindex(buckets, fill_value=0)
-        stacked_data[series_spec["label"]] = counts
-        colors.append(series_spec["color"])
+        stacked_data[series_spec.label] = counts
+        colors.append(series_spec.color)
 
     histogram_data = pd.DataFrame(stacked_data, index=buckets)
     max_total = int(histogram_data.sum(axis=1).max())
@@ -119,20 +125,17 @@ def max_normalize(values: pd.Series | pd.DataFrame, max_value: int) -> pd.Series
 
 def build_curve_panel(
     dataframe: pd.DataFrame,
-    data_config: dict[str, Any],
+    data_config: dict[str, SeriesSpec],
     series_ids: list[str],
-) -> tuple[
-    list[tuple[dict[str, Any], pd.DataFrame]],
-    int,
-    pd.Timestamp | None,
-    pd.Timestamp | None,
-]:
+) -> CurvePanelData:
     panel_series = []
     panel_max = 0
     active_start = None
     active_end = None
     for series_id in series_ids:
-        series_spec = get_series_spec(data_config, series_id)
+        if series_id not in data_config:
+            raise ValueError(f"Unknown series '{series_id}'")
+        series_spec = data_config[series_id]
         daily_counts = build_daily_series(select_series_data(dataframe, series_id))
         panel_series.append((series_spec, daily_counts))
         if not daily_counts.empty:
@@ -141,20 +144,24 @@ def build_curve_panel(
             date_end = daily_counts["date"].max()
             active_start = date_start if active_start is None else min(active_start, date_start)
             active_end = date_end if active_end is None else max(active_end, date_end)
-    return panel_series, panel_max, active_start, active_end
+    return CurvePanelData(
+        series=panel_series,
+        max_count=panel_max,
+        active_start=active_start,
+        active_end=active_end,
+    )
 
 
 def draw_curve_panel(
     axis,
-    panel_series: list[tuple[dict[str, Any], pd.DataFrame]],
-    panel_max: int,
+    panel: CurvePanelData,
     rolling_window: int,
     show_raw: bool,
     y_scale: str,
     include_window_suffix: bool,
 ) -> None:
-    for series_spec, daily_counts in panel_series:
-        normalized_count = max_normalize(daily_counts["count"], panel_max).clip(upper=100)
+    for series_spec, daily_counts in panel.series:
+        normalized_count = max_normalize(daily_counts["count"], panel.max_count).clip(upper=100)
         smoothed = normalized_count.rolling(window=rolling_window, center=True).mean()
         if y_scale == "log":
             smoothed = smoothed.where(smoothed > 0)
@@ -167,16 +174,16 @@ def draw_curve_panel(
                 raw_values,
                 alpha=0.2,
                 linewidth=0.7,
-                color=series_spec["color"],
+                color=series_spec.color,
             )
-        label = series_spec["label"]
+        label = series_spec.label
         if include_window_suffix:
             label = f"{label} ({rolling_window}-day avg)"
         axis.plot(
             daily_counts["date"],
             smoothed,
             linewidth=2,
-            color=series_spec["color"],
+            color=series_spec.color,
             label=label,
         )
 
@@ -184,7 +191,7 @@ def draw_curve_panel(
 def plot_curves(
     dataframe: pd.DataFrame,
     figure: dict[str, Any],
-    data_config: dict[str, Any],
+    data_config: dict[str, SeriesSpec],
     output_dir: Path,
     event_items: list[dict],
 ) -> None:
@@ -213,13 +220,10 @@ def plot_curves(
         include_window_suffix = True
 
     for axis, panel in zip(axes, panels):
-        panel_series, panel_max, active_start, active_end = build_curve_panel(
-            dataframe, data_config, panel["series"]
-        )
+        curve_panel = build_curve_panel(dataframe, data_config, panel["series"])
         draw_curve_panel(
             axis=axis,
-            panel_series=panel_series,
-            panel_max=panel_max,
+            panel=curve_panel,
             rolling_window=rolling_window,
             show_raw=show_raw,
             y_scale=y_scale,
@@ -237,13 +241,17 @@ def plot_curves(
             axis.set_ylim(1, 100)
         else:
             axis.set_ylim(0, 100)
-        if is_panel_mode and active_start is not None and active_end is not None:
+        if (
+            is_panel_mode
+            and curve_panel.active_start is not None
+            and curve_panel.active_end is not None
+        ):
             padding_days = int(panel.get("padding_days", 30))
             padding = pd.Timedelta(days=padding_days)
-            left_bound = active_start - padding
+            left_bound = curve_panel.active_start - padding
             if x_start is not None:
                 left_bound = max(left_bound, x_start)
-            axis.set_xlim(left_bound, active_end + padding)
+            axis.set_xlim(left_bound, curve_panel.active_end + padding)
         elif x_start is not None:
             axis.set_xlim(left=x_start)
         axis.grid(alpha=0.3)
@@ -260,7 +268,7 @@ def plot_curves(
 def plot_total_curve(
     dataframe: pd.DataFrame,
     figure: dict[str, Any],
-    data_config: dict[str, Any],
+    data_config: dict[str, SeriesSpec],
     output_dir: Path,
     event_items: list[dict],
 ) -> None:
@@ -269,10 +277,10 @@ def plot_total_curve(
     total_figure = dict(figure)
     total_figure["series"] = ["__sum__"]
     total_data = dict(data_config)
-    total_data["__sum__"] = {
-        "label": figure.get("label", "summed sources"),
-        "color": figure.get("color", "#444444"),
-    }
+    total_data["__sum__"] = SeriesSpec(
+        label=figure.get("label", "summed sources"),
+        color=figure.get("color", "#444444"),
+    )
     plot_curves(total_rows, total_figure, total_data, output_dir, event_items)
 
 
@@ -280,7 +288,7 @@ def render_figures(
     dataframe: pd.DataFrame,
     output_dir: Path,
     plot_config: dict[str, Any],
-    data_config: dict[str, Any],
+    data_config: dict[str, SeriesSpec],
     event_items: list[dict],
 ) -> None:
     def handle_histogram(figure: dict[str, Any]) -> None:
@@ -424,7 +432,7 @@ def plot(
     output_dir: str,
     key: str,
     plot_config: dict | None = None,
-    data_config: dict[str, Any] | None = None,
+    data_config: dict[str, SeriesSpec] | None = None,
 ) -> None:
     output_path = Path(output_dir)
     clean_data = dataframe.dropna(subset=["timestamp"]).copy()
@@ -456,7 +464,7 @@ def plot(
         day_origin_hour = parse_day_origin_hour(config)
         color_map = None
         if data_config is not None:
-            color_map = {series_id: item["color"] for series_id, item in data_config.items()}
+            color_map = {series_id: item.color for series_id, item in data_config.items()}
         plot_hourly_stacked(
             clean_data,
             output_dir / "hour.png",

@@ -66,7 +66,7 @@ class ConfigModel(BaseModel):
         for event_name, event_definition in self.events.items():
             if "events" in event_definition:
                 raise ValueError(
-                    f"events.{event_name} uses nested event groups; nesting is not supported"
+                    f"events.{event_name} is a group; only direct event definitions are supported"
                 )
         return self
 
@@ -85,19 +85,10 @@ def resolve_events(
     event_references: list[str],
 ) -> list[dict[str, Any]]:
     events_map = config.events
-    resolved_events: list[dict[str, Any]] = []
-
-    for event_reference in event_references:
-        if event_reference not in events_map:
-            raise ValueError(f"Unknown event '{event_reference}'")
-        event_definition = events_map[event_reference]
-        if "events" in event_definition:
-            raise ValueError(
-                f"events.{event_reference} uses nested event groups; nesting is not supported"
-            )
-        resolved_events.append(event_definition)
-
-    return resolved_events
+    unknown_events = [event_name for event_name in event_references if event_name not in events_map]
+    if unknown_events:
+        raise ValueError(f"Unknown events: {unknown_events}")
+    return [events_map[event_name] for event_name in event_references]
 
 
 def list_image_paths(
@@ -240,7 +231,7 @@ def run_set(config: ConfigModel, set_name: str, output_dir: str) -> None:
     if event_references:
         plot_config["event_items"] = resolve_events(config, event_references)
     data_config = {
-        series_id: {"label": series.label, "color": series.color}
+        series_id: plots.SeriesSpec(label=series.label, color=series.color)
         for series_id, series in config.data.items()
     }
     plots.plot(dataframe, output_dir, set_name, plot_config, data_config)
