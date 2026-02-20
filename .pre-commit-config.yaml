@@ -3,6 +3,7 @@ repos:
     rev: v2.3.10
     hooks:
       - id: biome-check
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.0
     hooks:
@@ -17,3 +18,12 @@ repos:
     hooks:
       - id: nbqa-autopep8
         args: ["--in-place", "--ignore=E221", "--max-line-length=100"]
+
+  - repo: local
+    hooks:
+      - id: ty
+        name: ty
+        entry: uv run ty check
+        language: system
+        types: [python]
+        pass_filenames: false

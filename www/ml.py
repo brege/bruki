@@ -99,20 +99,20 @@ def embed_images(
     import torch
     from PIL import Image
     from tqdm import tqdm
-    from transformers import CLIPModel, CLIPProcessor
+    from transformers import CLIPImageProcessor, CLIPVisionModel
 
     del batch_size
-    processor = CLIPProcessor.from_pretrained(
+    processor = CLIPImageProcessor.from_pretrained(
         model_name,
         use_fast=False,
         local_files_only=True,
     )
-    model = CLIPModel.from_pretrained(
+    model = CLIPVisionModel.from_pretrained(
         model_name,
         local_files_only=True,
-    ).vision_model
+    )
     model.eval()
-    model.to("cpu")
+    model.cpu()
 
     total = len(paths)
     vectors: list[np.ndarray] = []

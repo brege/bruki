@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -38,7 +38,7 @@ def slugify(value: str) -> str:
 
 
 def select_series_data(dataframe: pd.DataFrame, series_id: str) -> pd.DataFrame:
-    return dataframe[dataframe["series"] == series_id]
+    return dataframe.loc[dataframe["series"] == series_id, :]
 
 
 def get_hour_order(day_origin_hour: int) -> list[int]:
@@ -82,7 +82,10 @@ def plot_histogram(
             raise ValueError(f"Unknown series '{series_id}'")
         series_spec = data_config[series_id]
         series_data = select_series_data(dataframe, series_id)
-        counts = series_data.groupby(column).size().reindex(buckets, fill_value=0)
+        counts = cast(
+            pd.Series,
+            series_data.groupby(column).size().reindex(buckets, fill_value=0),
+        )
         stacked_data[series_spec.label] = counts
         colors.append(series_spec.color)
 
@@ -105,7 +108,8 @@ def plot_histogram(
 
 
 def build_daily_series(series_data: pd.DataFrame) -> pd.DataFrame:
-    daily_counts = series_data.groupby("date").size().reset_index(name="count")
+    counts = cast(pd.Series, series_data.groupby("date").size())
+    daily_counts = counts.to_frame(name="count").reset_index()
     daily_counts["date"] = pd.to_datetime(daily_counts["date"])
     return daily_counts
 
@@ -415,6 +419,8 @@ def plot_series_heatmaps(
             cbar_kws={"label": f"{value_label} (log scale)"},
         )
         colorbar = plt.gca().collections[0].colorbar
+        if colorbar is None:
+            raise ValueError("Heatmap colorbar was not created")
         max_tick = int(np.ceil(log.to_numpy().max()))
         colorbar.set_ticks(list(range(0, max_tick + 1)))
         colorbar.set_ticklabels([str(tick) for tick in range(0, max_tick + 1)])
@@ -429,12 +435,11 @@ def plot_series_heatmaps(
 
 def plot(
     dataframe: pd.DataFrame,
-    output_dir: str,
+    output_dir: Path | str,
     key: str,
     plot_config: dict | None = None,
     data_config: dict[str, SeriesSpec] | None = None,
 ) -> None:
-    output_path = Path(output_dir)
     clean_data = dataframe.dropna(subset=["timestamp"]).copy()
     if clean_data.empty:
         print("No timestamp data available for plotting")
@@ -443,19 +448,19 @@ def plot(
     config = plot_config or {}
     title = config.get("title", key.replace("_", " ").title())
     dir_name = slugify(config.get("output_dirname", key))
-    output_dir = output_path / dir_name
+    output_path = Path(output_dir) / dir_name
     value_label = config.get("value_label", "Images")
     plots = config.get("plots", [])
     figures = config.get("figures", [])
     if not plots and not figures:
         return
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path.mkdir(parents=True, exist_ok=True)
     event_items = config.get("event_items", [])
     set_plot_style()
     if figures:
         if data_config is None:
             raise ValueError("data configuration is required for figure rendering")
-        render_figures(clean_data, output_dir, config, data_config, event_items)
+        render_figures(clean_data, output_path, config, data_config, event_items)
         return
     series_key = config.get("series_key", "source")
     if series_key not in clean_data.columns:
@@ -467,7 +472,7 @@ def plot(
             color_map = {series_id: item.color for series_id, item in data_config.items()}
         plot_hourly_stacked(
             clean_data,
-            output_dir / "hour.png",
+            output_path / "hour.png",
             series_key,
             f"{title} by Hour of Day",
             f"{value_label} (max-normalized to 100)",
@@ -475,4 +480,4 @@ def plot(
             color_map,
         )
     if "heatmap" in plots:
-        plot_series_heatmaps(clean_data, output_dir, value_label, series_key)
+        plot_series_heatmaps(clean_data, output_path, value_label, series_key)

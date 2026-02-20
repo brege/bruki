@@ -1,8 +1,8 @@
-import glob
 import json
 import os
 import threading
 from pathlib import Path
+from typing import cast
 
 from flask import Flask, jsonify, render_template, request, send_file
 
@@ -49,8 +49,8 @@ def read_jsonl(path: Path, strict: bool = True) -> list[dict]:
 
 
 def item_paths() -> list[Path]:
-    paths = (BASE_DIR / Path(path) for path in glob.glob(str(BASE_DIR / JSONL_GLOB)))
-    return sorted(paths, key=str)
+    paths = (Path(str(path)) for path in BASE_DIR.glob(JSONL_GLOB))
+    return cast(list[Path], sorted(paths, key=str))
 
 
 def item_fingerprint(paths: list[Path]) -> tuple[tuple[str, int, int], ...]:

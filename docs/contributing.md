@@ -2,16 +2,51 @@
 
 ### Linters / Formatters
 
-| Formatter    | Extension              | Description |
-|:------------ |:---------------------- |:----------- |
-| `nbstripout` | `.ipynb` | don't commit any Jupyter notebook outputs |
-| `nbqa`       | `.ipynb` | opinionated notebook linter (preserves aligned '=' cells) |
-| `ruff`       | `.py`    | general purpose python linter and formatter |
-| `biome`      | `.js`, `.css`, `.html` | formats client-side code |
+<table>
+  <thead>
+    <tr>
+      <th>Formatter</th>
+      <th>Extension</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><a href="https://github.com/kynan/nbstripout">nbstripout</a></td>
+      <td><code>.ipynb</code></td>
+      <td>ensures Jupyter notebook output cells aren't committed</td>
+    </tr>
+    <tr>
+      <td><a href="https://github.com/nbQA-dev/nbQA">nbqa</a></td>
+      <td><code>.ipynb</code></td>
+      <td>Jupyter notebook linter and formatter</td>
+    </tr>
+    <tr>
+      <td><a href="https://github.com/astral-sh/ruff">ruff</a></td>
+      <td><code>.py</code></td>
+      <td>general purpose python linter and formatter</td>
+    </tr>
+    <tr>
+      <td><a href="https://github.com/astral-sh/ty">ty</a></td>
+      <td><code>.py</code></td>
+      <td>static type checker</td>
+    </tr>
+    <tr>
+      <td><a href="https://github.com/biomejs/biome">biome</a></td>
+      <td><code>.js</code>, <code>.css</code>, <code>.html</code></td>
+      <td>formats client-side code</td>
+    </tr>
+  </tbody>
+</table>
+
+While [ruff](https://github.com/charliermarsh/ruff) can format Jupyter notebooks, [nbqa](https://github.com/nbQA-dev/nbQA) has relaxed alignment rules that cannot be configured in Ruff; specifically: aligning code blocks on equal signs.
 
 ### Architecture
 
-Subject to change. One dependency direction:
+> [!WARNING] 
+> Subject to change. 
+
+One dependency direction:
 
 ```
 image_activity/activity.py   config, path resolution, timestamp extraction
