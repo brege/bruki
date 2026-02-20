@@ -12,7 +12,7 @@ import yaml
 from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-import plots
+from image_activity import plots
 
 
 class SourceConfig(BaseModel):

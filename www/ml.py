@@ -1,5 +1,7 @@
 import argparse
+import importlib
 import json
+import sys
 import threading
 import time
 from collections import Counter
@@ -8,7 +10,13 @@ from pathlib import Path
 import numpy as np
 from sklearn.cluster import MiniBatchKMeans
 
-from activity import list_image_paths, load_config
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+_activity = importlib.import_module("image_activity.activity")
+list_image_paths = _activity.list_image_paths
+load_config = _activity.load_config
 
 MODEL_NAME = "openai/clip-vit-base-patch32"
 STATUS_FILE = "ml_status.json"
@@ -308,9 +316,9 @@ def get_clusters(state_dir: Path) -> list[dict]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build CLIP embeddings and clusters for www UI.")
-    parser.add_argument("--config", default="config.yaml")
-    parser.add_argument("--state-dir", default="www/state")
-    parser.add_argument("--model", default=MODEL_NAME)
+    parser.add_argument("-c", "--config", default="config.yaml")
+    parser.add_argument("-s", "--state", default="www/state")
+    parser.add_argument("-m", "--model", default=MODEL_NAME)
     return parser.parse_args()
 
 

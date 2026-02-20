@@ -32,14 +32,15 @@ dev = [
 ]
 
 [project.scripts]
-activity = "activity:main"
+activity = "image_activity.activity:main"
+www = "image_activity.www:main"
 
 [build-system]
 requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-include = ["activity.py", "plots.py"]
+packages = ["image_activity"]
 
 [tool.ruff]
 line-length = 100

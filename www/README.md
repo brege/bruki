@@ -14,7 +14,7 @@ This is a work in progress app for creating genre tags for screenshots.
 ## Launch
 
 1. Start the app:
-   - `uv run www/api.py`
+   - `uv run www`
 2. Open:
    - `http://127.0.0.1:5000`
 
@@ -26,5 +26,4 @@ This is related to the notebook in `ml/classify.ipynb`, which includes analysis 
 
 - `TAGGER_CONFIG` sets the config file path.
 - `TAGGER_STATE_DIR` sets the state directory.
-
 
