@@ -9,3 +9,11 @@ repos:
       - id: ruff-check
         args: [--fix]
       - id: ruff-format
+        # new:
+        exclude: \.ipynb$
+
+  - repo: https://github.com/nbQA-dev/nbQA
+    rev: 1.9.1
+    hooks:
+      - id: nbqa-autopep8
+        args: ["--in-place", "--ignore=E221", "--max-line-length=100"]
