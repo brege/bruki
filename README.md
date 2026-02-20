@@ -2,14 +2,15 @@
 
 Exploring image activity over time from multiple sources & image types, and building out a screenshot labeling/tagging system.
 
-> [!NOTE] This repo is part of a series of data exploration projects around my personal computer usage. Their README's are blog-like in background because [brege.org](https://brege.org) is their intended target.
+> [!NOTE] 
+> This repo is part of a series of data exploration projects around my personal computer usage. Their README's are blog-like in background because [brege.org](https://brege.org) is their intended target.
 
 ## Quickstart
 
 ```bash
-git clone https://github.com/brege/image-activity.git && cd image-activity
+git clone https://github.com/brege/image-activity.git && cd image-activity && uv sync
 cp config.example.yaml config.yaml
-# see "Configuration" below
+# see "Configuration" below to edit config.yaml
 uv run activity # --output-dir images
 ```
 
@@ -28,6 +29,13 @@ This sequence will generate heatmaps, histograms, and trends about source image 
 - Use baseline Data Science exploration techniques to categorize ~3000 screenshots
 - Compare OCR via [tesseract](https://github.com/UB-Mannheim/tesseract) and CLIP from [OpenAI](https://github.com/openai/CLIP)
 - Building out a tagging/labeling web app and API to interactively annotate screenshots with machine learning assistence
+
+Ensure, if you plan on doing ML work:
+```bash
+uv sync --extra ml --extra notebook
+```
+
+
 
 ## Background
 
@@ -172,9 +180,11 @@ The web app stores labels in `www/state/labels.jsonl`, and notebook experiments 
 
 ### Notes
 
-The YAML structure adds additional verbosity and line-of-code bloat that cannot be forgiven. It is indeed easier to just run a few small Python/matplotlib scripts to generate these plots. 
+> [!IMPORTANT]
+> The YAML structure adds additional verbosity and line-of-code bloat that cannot be forgiven. It is indeed easier to just run a few small Python/matplotlib scripts to generate these plots. 
 
-This project, like [sanoma](https://github.com/brege/sanoma), is part of a series of datamine-yourself projects that are, at a later date, aiming to converge these tools into a series of collectors.
+> [!NOTE] 
+> This project, like [sanoma](https://github.com/brege/sanoma), is part of a series of datamine-yourself projects that are, at a later date, aiming to converge these tools into a series of collectors.
 
 ## License
 

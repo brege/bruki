@@ -1,4 +1,4 @@
-# www
+# Web App for Screenshot Tagging
 
 This is a work in progress app for creating genre tags for screenshots.
 
