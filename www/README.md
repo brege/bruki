@@ -20,7 +20,7 @@ This is a work in progress app for creating genre tags for screenshots.
 
 The app is running on http://127.0.0.1:5000. Open this URL in your browser, and the app will immediately begin building the CLIP model by clustering images by their vector space embedding similarities.
 
-This is related to the notebook in `notebook.ipynb`, which includes analysis and quantitative comparisons between [CLIP](https://github.com/openai/CLIP) and [OCR via Tesseract](https://github.com/UB-Mannheim/tesseract) measures.
+This is related to the notebook in `classify.ipynb`, which includes analysis and quantitative comparisons between [CLIP](https://github.com/openai/CLIP) and [OCR via Tesseract](https://github.com/UB-Mannheim/tesseract) measures.
 
 ## Optional env vars
 

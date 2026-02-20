@@ -57,7 +57,7 @@ This effort involves evolving part of this project into a web app that automatic
 
 3. The notebook analysis compares your manual labels with OCR and CLIP clustering.
    ```bash
-   jupyter notebook notebook.ipynb
+   jupyter notebook classify.ipynb
    ```
 
 The web app stores labels in `www/state/labels.jsonl`, and notebook experiments can be rerun as this file grows.
