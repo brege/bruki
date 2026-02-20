@@ -1,7 +1,4 @@
-import argparse
-import importlib
 import json
-import sys
 import threading
 import time
 from collections import Counter
@@ -9,13 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-_activity = importlib.import_module("image_activity.activity")
-list_image_paths = _activity.list_image_paths
-load_config = _activity.load_config
+from image_activity.activity import list_image_paths, load_config
 
 MODEL_NAME = "openai/clip-vit-base-patch32"
 STATUS_FILE = "ml_status.json"
@@ -304,20 +295,3 @@ def get_clusters(state_dir: Path) -> list[dict]:
     clusters_path = state_dir / CLUSTERS_FILE
     payload = read_json(clusters_path, default={})
     return payload.get("clusters", [])
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Build CLIP embeddings and clusters for www UI.")
-    parser.add_argument("-c", "--config", default="config.yaml")
-    parser.add_argument("-s", "--state", default="www/state")
-    parser.add_argument("-m", "--model", default=MODEL_NAME)
-    return parser.parse_args()
-
-
-def main() -> None:
-    args = parse_args()
-    run(config_path=Path(args.config), state_dir=Path(args.state), model_name=args.model)
-
-
-if __name__ == "__main__":
-    main()
