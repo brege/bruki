@@ -6,7 +6,7 @@ from typing import cast
 
 from flask import Flask, jsonify, render_template, request, send_file
 
-from www import ml as ml_pipeline
+from bruki.server import ml as ml_pipeline
 
 APP_DIR = Path(__file__).resolve().parent
 app = Flask(
@@ -16,7 +16,7 @@ app = Flask(
     static_url_path="",
 )
 BASE_DIR = Path(os.environ.get("TAGGER_BASE", ".")).resolve()
-STATE_DIR = Path(os.environ.get("TAGGER_STATE_DIR", "www/state"))
+STATE_DIR = Path(os.environ.get("TAGGER_STATE_DIR", "bruki/server/state"))
 STATE_PATH = (BASE_DIR / STATE_DIR).resolve()
 CONFIG_PATH = Path(os.environ.get("TAGGER_CONFIG", "config.yaml")).expanduser().resolve()
 JSONL_GLOB = os.environ.get("TAGGER_JSONL", str(STATE_DIR / "items.jsonl"))
@@ -251,5 +251,9 @@ def serve_image():
     return send_file(abs_path)
 
 
-if __name__ == "__main__":
+def main() -> None:
     app.run(debug=True, port=5000)
+
+
+if __name__ == "__main__":
+    main()

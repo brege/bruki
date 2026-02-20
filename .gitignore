@@ -6,4 +6,4 @@ __pycache__/
 config.yaml
 data/
 images/
-www/state/
+bruki/server/state/

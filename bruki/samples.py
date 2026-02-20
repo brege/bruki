@@ -5,7 +5,7 @@ import random
 import shutil
 from pathlib import Path
 
-from image_activity.activity import list_image_paths, load_config
+from bruki.config import list_image_paths, load_config
 
 
 def parse_args() -> argparse.Namespace:

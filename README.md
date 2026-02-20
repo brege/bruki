@@ -1,4 +1,4 @@
-# Image Activity
+# bruki | Image Activity & Screenshot Tagging
 
 Exploring image activity over time from multiple sources & image types, and building out a screenshot labeling/tagging system.
 
@@ -8,8 +8,8 @@ Exploring image activity over time from multiple sources & image types, and buil
 ## Setup
 
 ```bash
-git clone https://github.com/brege/image-activity
-cd image-activity && uv sync # [--extra notebook --extra ml]
+git clone https://github.com/brege/bruki
+cd bruki && uv sync # [--extra notebook --extra ml]
 cp config.example.yaml config.yaml
 # see "Configuration" below -> edit config.yaml
 uv run activity # --output-dir images
@@ -45,7 +45,7 @@ This effort is evolving this project into a web app that can automatically and i
 
 1. Generate a reproducible screenshot sample for manual labels.
    ```bash
-   uv run python -m image_activity.samples --seed 42 --samples 200
+   uv run python -m bruki.samples --seed 42 --samples 200
    ```
 
 2. Launch the labeling app and label the sample.
@@ -59,7 +59,7 @@ This effort is evolving this project into a web app that can automatically and i
    jupyter notebook classify.ipynb
    ```
 
-The web app stores labels in `www/state/labels.jsonl`, and notebook experiments can be rerun as this file grows.
+The web app stores labels in `bruki/server/state/labels.jsonl`, and notebook experiments can be rerun as this file grows.
 
 ## Background
 

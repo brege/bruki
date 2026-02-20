@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from image_activity.activity import list_image_paths, load_config
+from bruki.config import list_image_paths, load_config
 
 MODEL_NAME = "openai/clip-vit-base-patch32"
 STATUS_FILE = "ml_status.json"
