@@ -18,13 +18,18 @@ This sequence will generate heatmaps, histograms, and trends about source image 
 
 ## Features
 
-### Part 1
+### Part 1: Time Series Analysis
 
 - Generate heatmaps and histograms of image saving activity over hours, days, and months
 - Use file timestamps, modified-times, EXIF, and regex parsing for refined image discovery
 - Add bands and markers for major life events and device purchases
 
-### Part 2
+If you don't care about the screenshot analysis ([Part 2](#part-2) below) and just want to generate activity plots, you can go directly to [Background](#background).
+
+### Part 2: Screenshot Categorization
+
+> [!WARNING]
+> This section is in active development.
 
 - Use baseline Data Science exploration techniques to categorize ~3000 screenshots
 - Compare OCR via [tesseract](https://github.com/UB-Mannheim/tesseract) and CLIP from [OpenAI](https://github.com/openai/CLIP)
@@ -35,7 +40,27 @@ Ensure, if you plan on doing ML work:
 uv sync --extra ml --extra notebook
 ```
 
+#### In active development
 
+This effort involves evolving part of this project into a web app that automatically and interactively categorize screenshots. There are three main parts of this process, currently:
+
+1. Generate a reproducible screenshot sample for manual labels.
+   ```bash
+   uv run python -m ml.samples --seed 42 --samples 200
+   ```
+
+2. Launch the labeling app and label the sample.
+   ```bash
+   uv run www
+   ```
+   Open http://localhost:5000. This relies on your configuration in `config.yaml`.
+
+3. The notebook analysis compares your manual labels with OCR and CLIP clustering.
+   ```bash
+   jupyter notebook ml/classify.ipynb
+   ```
+
+The web app stores labels in `www/state/labels.jsonl`, and notebook experiments can be rerun as this file grows.
 
 ## Background
 
@@ -156,27 +181,6 @@ uv run activity -o images
     milestones: 
       - phd_defense
    ```
-
-## Screenshot Categorization
-
-In active development is a method to both automatically and interactively categorize screenshots. There are three main parts of this process.
-
-1. Generate a reproducible screenshot sample for manual labels.
-   ```bash
-   uv run python -m ml.samples --seed 42 --samples 200
-   ```
-
-2. Launch the labeling app and label the sample.
-   ```bash
-   uv run www
-   ```
-   Open http://localhost:5000. This relies on your configuration in `config.yaml`.
-
-3. The notebook analysis compares your manual labels with OCR and CLIP clustering.
-   ```bash
-   jupyter notebook ml/classify.ipynb
-   ```
-The web app stores labels in `www/state/labels.jsonl`, and notebook experiments can be rerun as this file grows.
 
 ### Notes
 
