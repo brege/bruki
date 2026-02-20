@@ -1,9 +1,6 @@
-# bruki | Image Activity & Screenshot Tagging
+# bruki | Image Activity & Tagging
 
 Exploring image activity over time from multiple sources & image types, and building out a screenshot labeling/tagging system.
-
-> [!NOTE] 
-> This repo is part of a series of data exploration projects around my personal computer usage. Their README's are blog-like in background because [brege.org](https://brege.org) is their intended target.
 
 ## Setup
 
@@ -30,7 +27,7 @@ If you don't care about the screenshot analysis ([Part 2](#part-2) below) and ju
 ### Part 2: Screenshot Categorization
 
 > [!WARNING]
-> This section is in active development.
+> This section is under active development.
 
 - Use baseline Data Science exploration techniques to categorize ~3000 screenshots
 - Compare OCR via [tesseract](https://github.com/UB-Mannheim/tesseract) and CLIP from [OpenAI](https://github.com/openai/CLIP)
@@ -74,9 +71,9 @@ See [my blog post](https://brege.org/post/image-activity/) for motivation behind
 
 My reference image collection fits in three main categories:
 
-1. **camera**: storage of camera photos from my phone
-2. **screenshots**: screenshots on both my laptop and phone
-3. **internet**: pictures downloaded from the internet
+1. **camera** photos from my phone
+2. **screenshots** from both my laptop and my phone
+3. **internet** pictures downloaded from the internet
 
 ### Screenshot vs. Camera vs. Internet Trends
 

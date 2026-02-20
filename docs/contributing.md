@@ -90,4 +90,4 @@ flowchart TB
 
 - [**pydantic**](https://github.com/pydantic/pydantic) is the config contract. All YAML input is validated through `ConfigModel` at load time. Do not re-validate or re-parse config downstream.
 
-- [**pandas**](github.com/pandas-dev/pandas) is the data layer for anything involving image records, timestamps, or aggregations in the notebook, and sometimes in the app code. Manipulate JSON structures through and around the Flask API code only.
+- [**pandas**](https://github.com/pandas-dev/pandas) is the data layer for anything involving image records, timestamps, or aggregations in the notebook, and sometimes in the app code. Manipulate JSON structures through and around the Flask API code only.
