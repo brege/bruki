@@ -1,19 +1,18 @@
+import hashlib
 import importlib
 import json
+import sqlite3
 import threading
 import time
 from collections import Counter
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
 
-from bruki.config import list_image_paths, load_config
+from bruki.config import load_config, resolve_paths
 
 MODEL_NAME = "openai/clip-vit-base-patch32"
-STATUS_FILE = "ml_status.json"
-ITEMS_FILE = "items.jsonl"
-EMBEDDINGS_FILE = "clip_embeddings.npy"
-CLUSTERS_FILE = "clusters.json"
 
 _JOB_LOCK = threading.Lock()
 _JOB_THREAD: threading.Thread | None = None
@@ -23,31 +22,68 @@ def now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
-def read_json(path: Path, default: dict) -> dict:
-    if not path.exists():
-        return default
-    with path.open("r", encoding="utf-8") as handle:
-        return json.load(handle)
+def init_db(db_path: Path) -> None:
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    with conn:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS ml_status (
+                id INTEGER PRIMARY KEY CHECK(id = 1),
+                payload TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS clip_item (
+                input_path TEXT PRIMARY KEY,
+                series TEXT NOT NULL,
+                source TEXT NOT NULL,
+                cluster INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS clip_cluster (
+                cluster_id INTEGER PRIMARY KEY,
+                count INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS clip_embedding (
+                input_path TEXT PRIMARY KEY,
+                model TEXT NOT NULL,
+                mtime_ns INTEGER NOT NULL,
+                size_bytes INTEGER NOT NULL,
+                dim INTEGER NOT NULL,
+                vector BLOB NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS ocr_doc (
+                input_path TEXT PRIMARY KEY,
+                text TEXT NOT NULL
+            );
+            """
+        )
+    conn.close()
 
 
-def write_json(path: Path, payload: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2, sort_keys=True)
+def read_status(db_path: Path, default: dict | None = None) -> dict:
+    init_db(db_path)
+    conn = sqlite3.connect(db_path)
+    row = conn.execute("SELECT payload FROM ml_status WHERE id = 1").fetchone()
+    conn.close()
+    if row is None:
+        return {} if default is None else default
+    return json.loads(row[0])
 
 
-def write_jsonl(path: Path, rows: list[dict]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        for row in rows:
-            handle.write(json.dumps(row) + "\n")
-
-
-def update_status(status_path: Path, **fields: object) -> dict:
-    payload = read_json(status_path, default={})
+def update_status(db_path: Path, **fields: object) -> dict:
+    payload = read_status(db_path, default={})
     payload.update(fields)
     payload["updated_at"] = now_iso()
-    write_json(status_path, payload)
+    init_db(db_path)
+    conn = sqlite3.connect(db_path)
+    with conn:
+        conn.execute(
+            """
+            INSERT INTO ml_status(id, payload) VALUES (1, ?)
+            ON CONFLICT(id) DO UPDATE SET payload = excluded.payload
+            """,
+            (json.dumps(payload, sort_keys=True),),
+        )
+    conn.close()
     return payload
 
 
@@ -56,31 +92,136 @@ def resolve_screenshot_records(config_path: Path) -> tuple[list[dict], list[dict
     rows: list[dict] = []
     source_stats: list[dict] = []
     source_roots: list[str] = []
-    for series_name, series_config in sorted(config.data.items()):
-        if not series_name.startswith("screenshot"):
-            continue
-        anti_patterns = config.anti_patterns + series_config.anti_patterns
-        for source_name, source_spec in sorted(series_config.sources.items()):
-            root = Path(source_spec.path).expanduser().resolve()
-            source_roots.append(str(root))
-            image_paths = list_image_paths(source_spec, config.extensions, anti_patterns)
-            source_stats.append(
+    for series_name, source_name, image_paths in resolve_paths(config, prefix="screenshot"):
+        source_spec = config.data[series_name].sources[source_name]
+        root = Path(source_spec.path).expanduser().resolve()
+        source_roots.append(str(root))
+        source_stats.append(
+            {
+                "series": series_name,
+                "source": source_name,
+                "root": str(root),
+                "count": len(image_paths),
+            }
+        )
+        for path in image_paths:
+            rows.append(
                 {
                     "series": series_name,
                     "source": source_name,
-                    "root": str(root),
-                    "count": len(image_paths),
+                    "input_path": str(path),
                 }
             )
-            for path in image_paths:
-                rows.append(
-                    {
-                        "series": series_name,
-                        "source": source_name,
-                        "input_path": str(path),
-                    }
-                )
     return rows, source_stats, sorted(set(source_roots))
+
+
+def records_signature(rows: list[dict]) -> str:
+    values: list[str] = []
+    for row in rows:
+        input_path = row["input_path"]
+        try:
+            stat = Path(input_path).stat()
+            values.append(f"{input_path}\t{int(stat.st_mtime_ns)}\t{int(stat.st_size)}")
+        except OSError:
+            values.append(f"{input_path}\t0\t0")
+    joined = "\n".join(sorted(values))
+    return hashlib.sha1(joined.encode("utf-8")).hexdigest()
+
+
+def ocr_image(path: Path, psm: int = 6, oem: int = 3) -> str:
+    from PIL import Image
+
+    pytesseract = importlib.import_module("pytesseract")
+    with Image.open(path) as image:
+        if image.size[0] < 10 or image.size[1] < 10:
+            return ""
+        return pytesseract.image_to_string(
+            image.convert("RGB"),
+            lang="eng",
+            config=f"--psm {psm} --oem {oem}",
+        )
+
+
+def sync_ocr_db(
+    config_path: Path,
+    db_path: Path,
+    paths: list[str] | None = None,
+    progress: Callable[[int, int, float, int], None] | None = None,
+) -> dict:
+    if paths is None:
+        records, _, _ = resolve_screenshot_records(config_path)
+        paths = list(dict.fromkeys(record["input_path"] for record in records))
+    else:
+        paths = list(dict.fromkeys(paths))
+
+    tqdm = importlib.import_module("tqdm").tqdm
+    init_db(db_path)
+    conn = sqlite3.connect(db_path)
+    known_paths = {input_path for (input_path,) in conn.execute("SELECT input_path FROM ocr_doc")}
+    new_docs: list[tuple[str, str]] = []
+    skipped = 0
+    total = len(paths)
+    status_every_images = 10
+    status_every_seconds = 0.5
+    last_status_time = 0.0
+    with tqdm(total=total, desc="ocr") as progress_bar:
+        for index, input_path in enumerate(paths, start=1):
+            if input_path in known_paths:
+                progress_bar.update(1)
+            else:
+                try:
+                    text = ocr_image(Path(input_path)).lower()
+                except OSError:
+                    skipped += 1
+                    text = ""
+                new_docs.append((input_path, text))
+                progress_bar.update(1)
+
+            now = time.time()
+            should_report = (
+                index == total
+                or index % status_every_images == 0
+                or (now - last_status_time) >= status_every_seconds
+            )
+            if should_report:
+                rate = progress_bar.format_dict.get("rate") or 0.0
+                remaining = max(total - progress_bar.n, 0)
+                eta_seconds = int(remaining / rate) if rate > 0 else 0
+                progress_bar.set_postfix(rate=f"{rate:.3f}/s", eta=eta_seconds, skipped=skipped)
+                if progress is not None:
+                    progress(index, total, float(rate), eta_seconds)
+                last_status_time = now
+
+    if new_docs:
+        with conn:
+            conn.executemany("INSERT INTO ocr_doc(input_path, text) VALUES (?, ?)", new_docs)
+
+    with conn:
+        conn.execute("CREATE TEMP TABLE current_path(input_path TEXT PRIMARY KEY)")
+        conn.executemany(
+            "INSERT INTO current_path(input_path) VALUES (?)",
+            [(input_path,) for input_path in paths],
+        )
+        deleted_rows = conn.execute(
+            """
+            DELETE FROM ocr_doc
+            WHERE NOT EXISTS (
+                SELECT 1 FROM current_path
+                WHERE current_path.input_path = ocr_doc.input_path
+            )
+            """
+        ).rowcount
+        conn.execute("DROP TABLE current_path")
+
+    total_rows = conn.execute("SELECT COUNT(*) FROM ocr_doc").fetchone()[0]
+    conn.close()
+    return {
+        "resolved_paths": total,
+        "new_rows": len(new_docs),
+        "deleted_rows": int(deleted_rows),
+        "skipped_rows": skipped,
+        "total_rows": int(total_rows),
+    }
 
 
 def default_cluster_count(total: int) -> int:
@@ -93,33 +234,49 @@ def default_cluster_count(total: int) -> int:
 
 def embed_images(
     paths: list[str],
-    status_path: Path,
+    path_stats: dict[str, tuple[int, int]],
+    db_path: Path,
     model_name: str,
     batch_size: int,
-) -> np.ndarray:
+    cached_images: int,
+) -> tuple[int, int]:
     from PIL import Image
 
     torch = importlib.import_module("torch")
     tqdm = importlib.import_module("tqdm").tqdm
     transformers = importlib.import_module("transformers")
-    clip_image_processor = transformers.CLIPImageProcessor
-    clip_vision_model = transformers.CLIPVisionModel
+    clip_processor = transformers.CLIPProcessor
+    clip_model = transformers.CLIPModel
 
     del batch_size
-    processor = clip_image_processor.from_pretrained(
+    total = len(paths)
+    if total == 0:
+        update_status(
+            db_path,
+            stage="embedding",
+            processed_images=0,
+            total_images=0,
+            skipped_images=0,
+            cached_images=cached_images,
+            rate_images_per_second=0.0,
+            eta_seconds=0,
+        )
+        return 0, 0
+
+    processor = clip_processor.from_pretrained(
         model_name,
         use_fast=False,
         local_files_only=True,
     )
-    model = clip_vision_model.from_pretrained(
+    model = clip_model.from_pretrained(
         model_name,
         local_files_only=True,
-    )
+    ).vision_model
     model.eval()
     model.cpu()
+    embed_dim = int(model.config.hidden_size)
 
-    total = len(paths)
-    vectors: list[np.ndarray] = []
+    rows: list[tuple[str, str, int, int, int, bytes]] = []
     skipped = 0
     min_size = 10
     status_every_images = 10
@@ -127,16 +284,33 @@ def embed_images(
     last_status_time = 0.0
     with tqdm(total=total, desc="embedding") as progress:
         for index, path_str in enumerate(paths, start=1):
-            with Image.open(path_str) as image:
-                if image.size[0] < min_size or image.size[1] < min_size:
-                    skipped += 1
-                    vectors.append(np.zeros(768, dtype=np.float32))
-                else:
-                    inputs = processor(images=image.convert("RGB"), return_tensors="pt")
-                    with torch.no_grad():
-                        outputs = model(**inputs)
-                        vec = outputs.pooler_output.squeeze(0).cpu().numpy().astype(np.float32)
-                    vectors.append(vec)
+            try:
+                with Image.open(path_str) as image:
+                    if image.size[0] < min_size or image.size[1] < min_size:
+                        skipped += 1
+                        vector = np.zeros(embed_dim, dtype=np.float32)
+                    else:
+                        inputs = processor(images=image.convert("RGB"), return_tensors="pt")
+                        with torch.no_grad():
+                            outputs = model(**inputs)
+                            vector = (
+                                outputs.pooler_output.squeeze(0).cpu().numpy().astype(np.float32)
+                            )
+            except OSError:
+                skipped += 1
+                vector = np.zeros(embed_dim, dtype=np.float32)
+
+            mtime_ns, size_bytes = path_stats[path_str]
+            rows.append(
+                (
+                    path_str,
+                    model_name,
+                    mtime_ns,
+                    size_bytes,
+                    embed_dim,
+                    vector.astype(np.float32).tobytes(),
+                )
+            )
 
             progress.update(1)
             now = time.time()
@@ -151,37 +325,135 @@ def embed_images(
                 eta_seconds = int(remaining / rate) if rate > 0 else 0
                 progress.set_postfix(skipped=skipped, rate=f"{rate:.3f}/s", eta=eta_seconds)
                 update_status(
-                    status_path,
+                    db_path,
                     stage="embedding",
                     processed_images=index,
                     total_images=total,
                     skipped_images=skipped,
+                    cached_images=cached_images,
                     rate_images_per_second=round(rate, 3),
                     eta_seconds=eta_seconds,
                 )
                 last_status_time = now
 
-    return np.vstack(vectors).astype(np.float32)
+    init_db(db_path)
+    conn = sqlite3.connect(db_path)
+    with conn:
+        conn.executemany(
+            """
+            INSERT INTO clip_embedding(input_path, model, mtime_ns, size_bytes, dim, vector)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(input_path) DO UPDATE SET
+                model = excluded.model,
+                mtime_ns = excluded.mtime_ns,
+                size_bytes = excluded.size_bytes,
+                dim = excluded.dim,
+                vector = excluded.vector
+            """,
+            rows,
+        )
+    conn.close()
+    return total, skipped
+
+
+def resolve_embeddings(
+    paths: list[str],
+    db_path: Path,
+    model_name: str,
+    batch_size: int,
+) -> tuple[np.ndarray, dict]:
+    path_stats: dict[str, tuple[int, int]] = {}
+    for path in paths:
+        try:
+            stat = Path(path).stat()
+            path_stats[path] = (int(stat.st_mtime_ns), int(stat.st_size))
+        except OSError:
+            path_stats[path] = (0, 0)
+
+    init_db(db_path)
+    conn = sqlite3.connect(db_path)
+    cache_rows = conn.execute(
+        "SELECT input_path, model, mtime_ns, size_bytes FROM clip_embedding",
+    ).fetchall()
+    cached_meta = {
+        input_path: (model, int(mtime_ns), int(size_bytes))
+        for input_path, model, mtime_ns, size_bytes in cache_rows
+    }
+    needs_embed = [
+        path
+        for path in paths
+        if cached_meta.get(path) != (model_name, path_stats[path][0], path_stats[path][1])
+    ]
+    cached_images = len(paths) - len(needs_embed)
+
+    with conn:
+        conn.execute("CREATE TEMP TABLE current_path(input_path TEXT PRIMARY KEY)")
+        conn.executemany(
+            "INSERT INTO current_path(input_path) VALUES (?)",
+            [(input_path,) for input_path in paths],
+        )
+        deleted_rows = conn.execute(
+            """
+            DELETE FROM clip_embedding
+            WHERE NOT EXISTS (
+                SELECT 1 FROM current_path
+                WHERE current_path.input_path = clip_embedding.input_path
+            )
+            """
+        ).rowcount
+        conn.execute("DROP TABLE current_path")
+    conn.close()
+
+    embedded_images, skipped_images = embed_images(
+        needs_embed,
+        path_stats=path_stats,
+        db_path=db_path,
+        model_name=model_name,
+        batch_size=batch_size,
+        cached_images=cached_images,
+    )
+
+    conn = sqlite3.connect(db_path)
+    embedding_rows = conn.execute(
+        "SELECT input_path, dim, vector FROM clip_embedding",
+    ).fetchall()
+    conn.close()
+    vectors_by_path = {}
+    for input_path, dim, vector_blob in embedding_rows:
+        vector = np.frombuffer(vector_blob, dtype=np.float32)
+        if vector.size != int(dim):
+            raise ValueError(f"Corrupt CLIP vector for {input_path}")
+        vectors_by_path[input_path] = vector
+
+    vectors = []
+    for path in paths:
+        vector = vectors_by_path.get(path)
+        if vector is None:
+            raise ValueError(f"Missing CLIP vector for {path}")
+        vectors.append(vector)
+    embeddings = np.vstack(vectors).astype(np.float32)
+    return embeddings, {
+        "embedded_images": embedded_images,
+        "cached_images": cached_images,
+        "deleted_rows": int(deleted_rows),
+        "skipped_images": skipped_images,
+    }
 
 
 def run(
     config_path: Path,
-    state_dir: Path,
+    db_path: Path,
     model_name: str = MODEL_NAME,
     batch_size: int = 24,
     cluster_count: int = 0,
 ) -> dict:
     mini_batch_k_means = importlib.import_module("sklearn.cluster").MiniBatchKMeans
 
-    status_path = state_dir / STATUS_FILE
-    items_path = state_dir / ITEMS_FILE
-    embeddings_path = state_dir / EMBEDDINGS_FILE
-    clusters_path = state_dir / CLUSTERS_FILE
-
-    state_dir.mkdir(parents=True, exist_ok=True)
+    init_db(db_path)
     update_status(
-        status_path,
+        db_path,
         stage="scanning",
+        error="",
         started_at=now_iso(),
         model=model_name,
         processed_images=0,
@@ -192,23 +464,29 @@ def run(
 
     rows, source_stats, source_roots = resolve_screenshot_records(config_path)
     total_images = len(rows)
+    signature = records_signature(rows)
     update_status(
-        status_path,
+        db_path,
         stage="scanning",
         source_stats=source_stats,
         source_roots=source_roots,
         total_images=total_images,
+        records_signature=signature,
     )
     if total_images < 2:
         raise ValueError("Found fewer than 2 screenshot images.")
 
     paths = [row["input_path"] for row in rows]
-    embeddings = embed_images(paths, status_path, model_name=model_name, batch_size=batch_size)
-    np.save(embeddings_path, embeddings)
+    embeddings, clip_stats = resolve_embeddings(
+        paths,
+        db_path=db_path,
+        model_name=model_name,
+        batch_size=batch_size,
+    )
 
     k = cluster_count if cluster_count > 0 else default_cluster_count(total_images)
     update_status(
-        status_path,
+        db_path,
         stage="clustering",
         cluster_count=k,
     )
@@ -221,59 +499,101 @@ def run(
     labels = clusterer.fit_predict(embeddings)
     counts = Counter(int(label) for label in labels)
 
-    for idx, label in enumerate(labels):
-        rows[idx]["cluster"] = int(label)
-
-    write_jsonl(items_path, rows)
-    cluster_rows = [
-        {"id": int(cluster_id), "count": int(count)}
-        for cluster_id, count in sorted(counts.items(), key=lambda item: item[0])
+    clip_rows = [
+        (
+            row["input_path"],
+            row["series"],
+            row["source"],
+            int(labels[idx]),
+        )
+        for idx, row in enumerate(rows)
     ]
-    write_json(
-        clusters_path,
-        {
-            "cluster_count": k,
-            "clusters": cluster_rows,
-            "created_at": now_iso(),
-        },
+    cluster_rows = [(int(cluster_id), int(count)) for cluster_id, count in sorted(counts.items())]
+    conn = sqlite3.connect(db_path)
+    with conn:
+        conn.execute("DELETE FROM clip_item")
+        conn.execute("DELETE FROM clip_cluster")
+        conn.executemany(
+            "INSERT INTO clip_item(input_path, series, source, cluster) VALUES (?, ?, ?, ?)",
+            clip_rows,
+        )
+        conn.executemany(
+            "INSERT INTO clip_cluster(cluster_id, count) VALUES (?, ?)",
+            cluster_rows,
+        )
+    conn.close()
+
+    update_status(
+        db_path,
+        stage="ocr",
+        processed_images=0,
+        total_images=total_images,
+        rate_images_per_second=0.0,
+        eta_seconds=0,
+    )
+    ocr_stats = sync_ocr_db(
+        config_path=config_path,
+        db_path=db_path,
+        paths=paths,
+        progress=lambda done, total, rate, eta: update_status(
+            db_path,
+            stage="ocr",
+            processed_images=done,
+            total_images=total,
+            rate_images_per_second=round(rate, 3),
+            eta_seconds=eta,
+        ),
     )
     return update_status(
-        status_path,
+        db_path,
         stage="done",
         processed_images=total_images,
         total_images=total_images,
+        cluster_count=k,
+        source_stats=source_stats,
+        source_roots=source_roots,
+        records_signature=signature,
+        clip_embedded_images=clip_stats["embedded_images"],
+        clip_cached_images=clip_stats["cached_images"],
+        clip_deleted_embeddings=clip_stats["deleted_rows"],
+        clip_skipped_images=clip_stats["skipped_images"],
+        ocr_new_rows=ocr_stats["new_rows"],
+        ocr_deleted_rows=ocr_stats["deleted_rows"],
+        ocr_skipped_rows=ocr_stats["skipped_rows"],
+        ocr_total_rows=ocr_stats["total_rows"],
         rate_images_per_second=0.0,
         eta_seconds=0,
     )
 
 
-def _run_job(config_path: Path, state_dir: Path, model_name: str, batch_size: int) -> None:
-    status_path = state_dir / STATUS_FILE
+def _run_job(config_path: Path, db_path: Path, model_name: str, batch_size: int) -> None:
     try:
         run(
             config_path=config_path,
-            state_dir=state_dir,
+            db_path=db_path,
             model_name=model_name,
             batch_size=batch_size,
         )
     except Exception as exc:
-        update_status(status_path, stage="error", error=str(exc))
+        update_status(db_path, stage="error", error=str(exc))
 
 
-def start_job(config_path: Path, state_dir: Path, model_name: str = MODEL_NAME) -> bool:
+def start_job(config_path: Path, db_path: Path, model_name: str = MODEL_NAME) -> bool:
     global _JOB_THREAD
     with _JOB_LOCK:
-        status_path = state_dir / STATUS_FILE
-        status = read_json(status_path, default={})
-        if status.get("stage") in {"scanning", "embedding", "clustering", "done"}:
-            return False
+        status = read_status(db_path, default={})
         if _JOB_THREAD is not None and _JOB_THREAD.is_alive():
             return False
+        if status.get("stage") == "done":
+            rows, _, _ = resolve_screenshot_records(config_path)
+            current_signature = records_signature(rows)
+            if status.get("records_signature") == current_signature:
+                return False
         thread = threading.Thread(
             target=_run_job,
             kwargs={
                 "config_path": config_path,
-                "state_dir": state_dir,
+                "db_path": db_path,
                 "model_name": model_name,
                 "batch_size": 24,
             },
@@ -284,9 +604,8 @@ def start_job(config_path: Path, state_dir: Path, model_name: str = MODEL_NAME) 
         return True
 
 
-def get_status(config_path: Path, state_dir: Path) -> dict:
-    status_path = state_dir / STATUS_FILE
-    payload = read_json(status_path, default={"stage": "idle"})
+def get_status(config_path: Path, db_path: Path) -> dict:
+    payload = read_status(db_path, default={"stage": "idle"})
     if "source_roots" not in payload:
         _, _, roots = resolve_screenshot_records(config_path)
         payload["source_roots"] = roots
@@ -295,7 +614,29 @@ def get_status(config_path: Path, state_dir: Path) -> dict:
     return payload
 
 
-def get_clusters(state_dir: Path) -> list[dict]:
-    clusters_path = state_dir / CLUSTERS_FILE
-    payload = read_json(clusters_path, default={})
-    return payload.get("clusters", [])
+def get_clusters(db_path: Path) -> list[dict]:
+    init_db(db_path)
+    conn = sqlite3.connect(db_path)
+    rows = conn.execute(
+        "SELECT cluster_id, count FROM clip_cluster ORDER BY cluster_id",
+    ).fetchall()
+    conn.close()
+    return [{"id": int(cluster_id), "count": int(count)} for cluster_id, count in rows]
+
+
+def get_items(db_path: Path) -> list[dict]:
+    init_db(db_path)
+    conn = sqlite3.connect(db_path)
+    rows = conn.execute(
+        "SELECT input_path, series, source, cluster FROM clip_item ORDER BY input_path",
+    ).fetchall()
+    conn.close()
+    return [
+        {
+            "input_path": input_path,
+            "series": series,
+            "source": source,
+            "cluster": int(cluster),
+        }
+        for input_path, series, source, cluster in rows
+    ]

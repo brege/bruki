@@ -1,8 +1,8 @@
 import json
+import logging
 import os
 import threading
 from pathlib import Path
-from typing import cast
 
 from flask import Flask, jsonify, render_template, request, send_file
 
@@ -17,18 +17,26 @@ app = Flask(
 )
 BASE_DIR = Path(os.environ.get("TAGGER_BASE", ".")).resolve()
 STATE_DIR = Path(os.environ.get("TAGGER_STATE_DIR", "data/server"))
-STATE_PATH = (BASE_DIR / STATE_DIR).resolve()
 CONFIG_PATH = Path(os.environ.get("TAGGER_CONFIG", "config.yaml")).expanduser().resolve()
-JSONL_GLOB = os.environ.get("TAGGER_JSONL", str(STATE_DIR / "items.jsonl"))
+STATE_DB = Path(os.environ.get("TAGGER_DB", str(STATE_DIR / "state.sqlite3")))
 LABELS_PATH = Path(os.environ.get("TAGGER_LABELS", str(STATE_DIR / "labels.jsonl")))
 _, _, _source_roots = ml_pipeline.resolve_screenshot_records(CONFIG_PATH)
 SOURCE_ROOTS = [Path(root) for root in _source_roots]
 
 _CACHE_LOCK = threading.Lock()
-_ITEMS_CACHE: list[dict] = []
-_ITEMS_FINGERPRINT: tuple[tuple[str, int, int], ...] | None = None
 _LABELS_CACHE: dict[str, list[str]] = {}
 _LABELS_MTIME_NS: int | None = None
+
+
+class AccessLogFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        return " - - [" not in message or "HTTP/" not in message
+
+
+def resolve_state_db() -> Path:
+    candidate = STATE_DB.expanduser()
+    return candidate.resolve() if candidate.is_absolute() else (BASE_DIR / candidate).resolve()
 
 
 def read_jsonl(path: Path, strict: bool = True) -> list[dict]:
@@ -48,43 +56,11 @@ def read_jsonl(path: Path, strict: bool = True) -> list[dict]:
     return rows
 
 
-def item_paths() -> list[Path]:
-    paths = (Path(str(path)) for path in BASE_DIR.glob(JSONL_GLOB))
-    return cast(list[Path], sorted(paths, key=str))
-
-
-def item_fingerprint(paths: list[Path]) -> tuple[tuple[str, int, int], ...]:
-    fingerprint: list[tuple[str, int, int]] = []
-    for path in paths:
-        if not path.exists():
-            continue
-        stat = path.stat()
-        fingerprint.append((str(path), stat.st_mtime_ns, stat.st_size))
-    return tuple(fingerprint)
-
-
 def labels_mtime_ns() -> int | None:
     path = BASE_DIR / LABELS_PATH
     if not path.exists():
         return None
     return path.stat().st_mtime_ns
-
-
-def load_items_cached() -> list[dict]:
-    global _ITEMS_CACHE, _ITEMS_FINGERPRINT
-    paths = item_paths()
-    fingerprint = item_fingerprint(paths)
-    with _CACHE_LOCK:
-        if _ITEMS_FINGERPRINT == fingerprint:
-            return _ITEMS_CACHE
-        rows: list[dict] = []
-        for jsonl_path in paths:
-            for row in read_jsonl(jsonl_path):
-                row["_src"] = str(jsonl_path)
-                rows.append(row)
-        _ITEMS_CACHE = rows
-        _ITEMS_FINGERPRINT = fingerprint
-        return _ITEMS_CACHE
 
 
 def read_labels_file() -> dict[str, list[str]]:
@@ -121,21 +97,20 @@ def write_labels_file(labels_by_path: dict[str, list[str]]) -> None:
         _LABELS_MTIME_NS = None
 
 
+def load_items() -> list[dict]:
+    return ml_pipeline.get_items(db_path=resolve_state_db())
+
+
 def load_all() -> list[dict]:
-    items = load_items_cached()
     labels = load_labels_cached()
     merged: list[dict] = []
-    for item in items:
+    for item in load_items():
         row = dict(item)
         input_path = row.get("input_path")
         if input_path in labels:
             row["categories"] = labels[input_path]
         merged.append(row)
     return merged
-
-
-def strip_src(item: dict) -> dict:
-    return {key: value for key, value in item.items() if key != "_src"}
 
 
 @app.get("/")
@@ -152,7 +127,7 @@ def get_items():
             cluster_id = item.get("cluster")
             if str(cluster_id) != selected_cluster:
                 continue
-        row = strip_src(item)
+        row = dict(item)
         row["_idx"] = item_idx
         payload.append(row)
     return jsonify(payload)
@@ -172,7 +147,7 @@ def patch_item(idx):
     categories = body.get("categories", [])
     if not isinstance(categories, list) or any(not isinstance(entry, str) for entry in categories):
         return jsonify({"error": "categories must be a list of strings"}), 400
-    items = load_items_cached()
+    items = load_items()
     if idx < 0 or idx >= len(items):
         return jsonify({"error": "out of range"}), 404
     input_path = items[idx].get("input_path")
@@ -181,7 +156,7 @@ def patch_item(idx):
     labels_by_path = dict(load_labels_cached())
     labels_by_path[input_path] = categories
     write_labels_file(labels_by_path)
-    response = strip_src(items[idx])
+    response = dict(items[idx])
     response["categories"] = categories
     response["_idx"] = idx
     return jsonify(response)
@@ -214,18 +189,23 @@ def purge_preview():
 
 @app.post("/api/ml/start")
 def start_ml():
-    started = ml_pipeline.start_job(config_path=CONFIG_PATH, state_dir=STATE_PATH)
+    started = ml_pipeline.start_job(config_path=CONFIG_PATH, db_path=resolve_state_db())
     return jsonify({"started": started})
 
 
 @app.get("/api/ml/status")
 def ml_status():
-    return jsonify(ml_pipeline.get_status(config_path=CONFIG_PATH, state_dir=STATE_PATH))
+    return jsonify(ml_pipeline.get_status(config_path=CONFIG_PATH, db_path=resolve_state_db()))
 
 
 @app.get("/api/ml/clusters")
 def ml_clusters():
-    return jsonify(ml_pipeline.get_clusters(state_dir=STATE_PATH))
+    return jsonify(ml_pipeline.get_clusters(db_path=resolve_state_db()))
+
+
+@app.post("/api/ml/ocr")
+def ml_ocr():
+    return jsonify(ml_pipeline.sync_ocr_db(config_path=CONFIG_PATH, db_path=resolve_state_db()))
 
 
 def path_within(path: Path, root: Path) -> bool:
@@ -252,7 +232,15 @@ def serve_image():
 
 
 def main() -> None:
-    app.run(debug=True, port=5000)
+    access_log = os.environ.get("TAGGER_ACCESS_LOG", "").lower() in {"1", "true", "yes", "on"}
+    werkzeug_logger = logging.getLogger("werkzeug")
+    werkzeug_logger.setLevel(logging.INFO)
+    if not access_log and not any(
+        isinstance(existing_filter, AccessLogFilter) for existing_filter in werkzeug_logger.filters
+    ):
+        werkzeug_logger.addFilter(AccessLogFilter())
+    debug = os.environ.get("TAGGER_DEBUG", "1").lower() in {"1", "true", "yes", "on"}
+    app.run(debug=debug, port=5000)
 
 
 if __name__ == "__main__":

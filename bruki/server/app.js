@@ -241,6 +241,13 @@ function formatMlStatus(status) {
     const eta = status.eta_seconds || 0;
     return `ml: embedding ${done}/${count} · ${rate.toFixed(2)} img/s · eta ${eta}s`;
   }
+  if (stage === 'ocr') {
+    const done = status.processed_images || 0;
+    const count = status.total_images || 0;
+    const rate = status.rate_images_per_second || 0;
+    const eta = status.eta_seconds || 0;
+    return `ml: ocr ${done}/${count} · ${rate.toFixed(2)} img/s · eta ${eta}s`;
+  }
   if (stage === 'clustering') {
     return `ml: clustering k=${status.cluster_count || '—'}`;
   }
@@ -291,7 +298,12 @@ async function refreshMlStatus() {
   lastMlStage = stage;
   lastMlStatusKey = statusKey;
 
-  if (stage === 'embedding' || stage === 'clustering' || stage === 'scanning') {
+  if (
+    stage === 'embedding' ||
+    stage === 'clustering' ||
+    stage === 'scanning' ||
+    stage === 'ocr'
+  ) {
     mlPollDelayMs = changed
       ? 3000
       : Math.min(Math.round(mlPollDelayMs * 1.5), 15000);
