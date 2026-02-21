@@ -1,3 +1,4 @@
+import argparse
 import json
 import logging
 import os
@@ -20,8 +21,16 @@ STATE_DIR = Path(os.environ.get("TAGGER_STATE_DIR", "data/server"))
 CONFIG_PATH = Path(os.environ.get("TAGGER_CONFIG", "config.yaml")).expanduser().resolve()
 STATE_DB = Path(os.environ.get("TAGGER_DB", str(STATE_DIR / "state.sqlite3")))
 LABELS_PATH = Path(os.environ.get("TAGGER_LABELS", str(STATE_DIR / "labels.jsonl")))
+SAMPLE_LABELS_PATH = Path("data/notebook/labels.jsonl")
+SAMPLE_STATE_DB = Path("data/notebook/state.sqlite3")
+SAMPLE_ITEMS_DIR = Path("data/notebook/samples")
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
+SAMPLE_MODE = False
 _, _, _source_roots = ml_pipeline.resolve_screenshot_records(CONFIG_PATH)
 SOURCE_ROOTS = [Path(root) for root in _source_roots]
+DEFAULT_STATE_DB = STATE_DB
+DEFAULT_LABELS_PATH = LABELS_PATH
+DEFAULT_SOURCE_ROOTS = list(SOURCE_ROOTS)
 
 _CACHE_LOCK = threading.Lock()
 _LABELS_CACHE: dict[str, list[str]] = {}
@@ -32,6 +41,27 @@ class AccessLogFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         message = record.getMessage()
         return " - - [" not in message or "HTTP/" not in message
+
+
+def resolve_sample_items_dir() -> Path:
+    candidate = SAMPLE_ITEMS_DIR.expanduser()
+    return candidate.resolve() if candidate.is_absolute() else (BASE_DIR / candidate).resolve()
+
+
+def set_sample_mode(enabled: bool) -> None:
+    global SAMPLE_MODE, STATE_DB, LABELS_PATH, SOURCE_ROOTS, _LABELS_CACHE, _LABELS_MTIME_NS
+    SAMPLE_MODE = enabled
+    if enabled:
+        STATE_DB = SAMPLE_STATE_DB
+        LABELS_PATH = SAMPLE_LABELS_PATH
+        SOURCE_ROOTS = [resolve_sample_items_dir()]
+    else:
+        STATE_DB = DEFAULT_STATE_DB
+        LABELS_PATH = DEFAULT_LABELS_PATH
+        SOURCE_ROOTS = list(DEFAULT_SOURCE_ROOTS)
+    with _CACHE_LOCK:
+        _LABELS_CACHE = {}
+        _LABELS_MTIME_NS = None
 
 
 def resolve_state_db() -> Path:
@@ -97,7 +127,32 @@ def write_labels_file(labels_by_path: dict[str, list[str]]) -> None:
         _LABELS_MTIME_NS = None
 
 
+def load_sample_items() -> list[dict]:
+    root = resolve_sample_items_dir()
+    if not root.exists():
+        return []
+    items: list[dict] = []
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or path.suffix.lower() not in IMAGE_EXTENSIONS:
+            continue
+        try:
+            input_path = str(path.relative_to(BASE_DIR))
+        except ValueError:
+            input_path = str(path)
+        items.append(
+            {
+                "input_path": input_path,
+                "series": "sample",
+                "source": path.parent.name,
+                "cluster": 0,
+            }
+        )
+    return items
+
+
 def load_items() -> list[dict]:
+    if SAMPLE_MODE:
+        return load_sample_items()
     return ml_pipeline.get_items(db_path=resolve_state_db())
 
 
@@ -115,7 +170,7 @@ def load_all() -> list[dict]:
 
 @app.get("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", sample_mode=SAMPLE_MODE)
 
 
 @app.get("/api/items")
@@ -189,22 +244,30 @@ def purge_preview():
 
 @app.post("/api/ml/start")
 def start_ml():
+    if SAMPLE_MODE:
+        return jsonify({"started": False, "disabled": True})
     started = ml_pipeline.start_job(config_path=CONFIG_PATH, db_path=resolve_state_db())
     return jsonify({"started": started})
 
 
 @app.get("/api/ml/status")
 def ml_status():
+    if SAMPLE_MODE:
+        return jsonify({"stage": "disabled", "disabled": True})
     return jsonify(ml_pipeline.get_status(config_path=CONFIG_PATH, db_path=resolve_state_db()))
 
 
 @app.get("/api/ml/clusters")
 def ml_clusters():
+    if SAMPLE_MODE:
+        return jsonify([])
     return jsonify(ml_pipeline.get_clusters(db_path=resolve_state_db()))
 
 
 @app.post("/api/ml/ocr")
 def ml_ocr():
+    if SAMPLE_MODE:
+        return jsonify({"disabled": True})
     return jsonify(ml_pipeline.sync_ocr_db(config_path=CONFIG_PATH, db_path=resolve_state_db()))
 
 
@@ -232,6 +295,11 @@ def serve_image():
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Run tagger server.")
+    parser.add_argument("--sample", action="store_true", help="Run labeling-only sample mode.")
+    args = parser.parse_args()
+    set_sample_mode(args.sample)
+
     access_log = os.environ.get("TAGGER_ACCESS_LOG", "").lower() in {"1", "true", "yes", "on"}
     werkzeug_logger = logging.getLogger("werkzeug")
     werkzeug_logger.setLevel(logging.INFO)

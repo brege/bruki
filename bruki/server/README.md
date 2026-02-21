@@ -4,25 +4,41 @@ This is a work in progress app for creating genre tags for screenshots.
 
 ## Setup
 
-1. Edit `config.yaml`.
-2. Set screenshot source paths under:
-   - `data.screenshot-phone.sources.phone.path`
-   - `data.screenshot-laptop.sources.laptop.path`
-3. Install dependencies:
-   - `uv sync`
+Set screenshot source paths in `config.yaml`:
+```yaml
+data:
+  screenshot-phone:
+    sources: 
+      phone:
+        path: /home/user/Syncthing/phone/Pictures/DCIM`
+# data.screenshot-laptop.sources.laptop.path ..
+```
 
-## Launch
+## Generate a Sample and Label it
 
-1. Start the app:
-   - `uv run www`
-2. Open:
-   - `http://127.0.0.1:5000`
+1. Generate a sample set from the above configured sources:
+   ```bash
+   uv run bruki/samples.py --seed 42 --samples 100
+   ```
+   This copies 100 sample images from each source into `data/notebook/samples/`.
 
-The app is running on http://127.0.0.1:5000. Open this URL in your browser, and the app will immediately begin building the CLIP model by clustering images by their vector space embedding similarities.
+2. Start labeling server in sample mode:
+   ```bash
+   uv run www --sample
+   ```
+3. The app is running on http://localhost:5000. Open this URL in your browser
+4. Label images (these are saved to `data/notebook/labels.jsonl`)
 
-This is related to the notebook in `classify.ipynb`, which includes analysis and quantitative comparisons between [CLIP](https://github.com/openai/CLIP) and [OCR via Tesseract](https://github.com/UB-Mannheim/tesseract) measures.
+Sample mode does not run machine learning. It is only for labeling. You use these labels for similarity analysis testing in the Jupyter notebook, `classify.ipynb`.
 
-## Optional env vars
+## Production with Machine Learning
 
-- `TAGGER_CONFIG` sets the config file path.
-- `TAGGER_STATE_DIR` sets the state directory (defaults to `data/server`).
+You can copy your labels to `data/server/labels.jsonl`.
+
+Start the app:
+```bash
+uv run www
+```
+The app will immediately begin building the CLIP model by clustering images by their vector space embedding similarities, then perform OCR on all of your images. The Jupyter notebook can help you interact with this same data through an isolated database. 
+
+The main production data is all stored in a SQLite database at `data/server/state.sqlite3`.

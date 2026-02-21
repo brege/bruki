@@ -17,6 +17,7 @@ let mlPollTimer = null;
 let forceSingleView = false;
 let galleryExpanded = false;
 let tagScope = '__any__';
+const sampleMode = window.TAGGER_SAMPLE_MODE === true;
 
 const shot = document.getElementById('shot');
 const progress = document.getElementById('progress');
@@ -438,6 +439,12 @@ async function init() {
     : Math.max(0, Math.min(items.length - 1, saved));
   render();
 
+  if (sampleMode) {
+    mlStatus.textContent = 'ml: disabled (sample mode)';
+    mlSources.textContent = '';
+    clustersDropdown.disabled = true;
+    return;
+  }
   await initMl();
 }
 
