@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
 import argparse
+import json
 import random
-import shutil
 from pathlib import Path
 
-from bruki.config import list_image_paths, load_config
+from bruki.config import load_config, resolve_paths
 
 
 def parse_args() -> argparse.Namespace:
@@ -25,29 +25,27 @@ def main() -> None:
     args = parse_args()
     random_state = random.Random(args.seed)
     config = load_config(args.config)
-    sources: dict[tuple[str, str], list[Path]] = {}
-    for series_name, series_config in sorted(config.data.items()):
-        if not series_name.startswith("screenshot"):
-            continue
-        anti_patterns = config.anti_patterns + series_config.anti_patterns
-        for source_name, source_spec in sorted(series_config.sources.items()):
-            key = (series_name, source_name)
-            sources[key] = list_image_paths(source_spec, config.extensions, anti_patterns)
-
-    output_root = Path("data") / "notebook" / "samples"
-    output_root.mkdir(parents=True, exist_ok=True)
-
-    source_items = sorted(sources.items())
-    for index, ((series_name, source_name), file_paths) in enumerate(source_items, start=1):
+    sample_rows: list[dict[str, str]] = []
+    for series_name, source_name, file_paths in resolve_paths(config, prefix="screenshot"):
         if len(file_paths) < args.samples:
             raise RuntimeError(
                 f"Not enough files for {series_name}:{source_name}: "
                 f"found {len(file_paths)}, need {args.samples}"
             )
-        output_dir = output_root / str(index)
-        output_dir.mkdir(parents=True, exist_ok=True)
         for file_path in random_state.sample(file_paths, args.samples):
-            shutil.copy2(file_path, output_dir / file_path.name)
+            sample_rows.append(
+                {
+                    "input_path": str(file_path),
+                    "series": series_name,
+                    "source": source_name,
+                }
+            )
+
+    output_path = Path("data") / "notebook" / "sample.jsonl"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as handle:
+        for row in sample_rows:
+            handle.write(json.dumps(row, sort_keys=True) + "\n")
 
 
 if __name__ == "__main__":

@@ -23,8 +23,7 @@ STATE_DB = Path(os.environ.get("TAGGER_DB", str(STATE_DIR / "state.sqlite3")))
 LABELS_PATH = Path(os.environ.get("TAGGER_LABELS", str(STATE_DIR / "labels.jsonl")))
 SAMPLE_LABELS_PATH = Path("data/notebook/labels.jsonl")
 SAMPLE_STATE_DB = Path("data/notebook/state.sqlite3")
-SAMPLE_ITEMS_DIR = Path("data/notebook/samples")
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
+SAMPLE_PATH = Path("data/notebook/sample.jsonl")
 SAMPLE_MODE = False
 _, _, _source_roots = ml_pipeline.resolve_screenshot_records(CONFIG_PATH)
 SOURCE_ROOTS = [Path(root) for root in _source_roots]
@@ -43,8 +42,8 @@ class AccessLogFilter(logging.Filter):
         return " - - [" not in message or "HTTP/" not in message
 
 
-def resolve_sample_items_dir() -> Path:
-    candidate = SAMPLE_ITEMS_DIR.expanduser()
+def resolve_sample_path() -> Path:
+    candidate = SAMPLE_PATH.expanduser()
     return candidate.resolve() if candidate.is_absolute() else (BASE_DIR / candidate).resolve()
 
 
@@ -54,7 +53,7 @@ def set_sample_mode(enabled: bool) -> None:
     if enabled:
         STATE_DB = SAMPLE_STATE_DB
         LABELS_PATH = SAMPLE_LABELS_PATH
-        SOURCE_ROOTS = [resolve_sample_items_dir()]
+        SOURCE_ROOTS = list(DEFAULT_SOURCE_ROOTS)
     else:
         STATE_DB = DEFAULT_STATE_DB
         LABELS_PATH = DEFAULT_LABELS_PATH
@@ -128,22 +127,25 @@ def write_labels_file(labels_by_path: dict[str, list[str]]) -> None:
 
 
 def load_sample_items() -> list[dict]:
-    root = resolve_sample_items_dir()
-    if not root.exists():
+    sample_path = resolve_sample_path()
+    if not sample_path.exists():
         return []
     items: list[dict] = []
-    for path in sorted(root.rglob("*")):
-        if not path.is_file() or path.suffix.lower() not in IMAGE_EXTENSIONS:
-            continue
-        try:
-            input_path = str(path.relative_to(BASE_DIR))
-        except ValueError:
-            input_path = str(path)
+    for row in read_jsonl(sample_path, strict=True):
+        input_path = row.get("input_path")
+        if not isinstance(input_path, str) or not input_path:
+            raise ValueError(f"invalid input_path in {sample_path}")
+        series = row.get("series", "sample")
+        source = row.get("source", "sample")
+        if not isinstance(series, str) or not series:
+            raise ValueError(f"invalid series in {sample_path}")
+        if not isinstance(source, str) or not source:
+            raise ValueError(f"invalid source in {sample_path}")
         items.append(
             {
                 "input_path": input_path,
-                "series": "sample",
-                "source": path.parent.name,
+                "series": series,
+                "source": source,
                 "cluster": 0,
             }
         )
