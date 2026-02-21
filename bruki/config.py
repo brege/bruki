@@ -107,3 +107,21 @@ def list_image_paths(
             continue
         matches.append(file_path)
     return sorted(matches)
+
+
+def resolve_paths(
+    config: ConfigModel,
+    series: list[str] | None = None,
+    prefix: str | None = None,
+) -> list[tuple[str, str, list[Path]]]:
+    series_names = sorted(config.data.keys()) if series is None else series
+    resolved: list[tuple[str, str, list[Path]]] = []
+    for series_name in series_names:
+        if prefix is not None and not series_name.startswith(prefix):
+            continue
+        series_config = config.data[series_name]
+        anti_patterns = config.anti_patterns + series_config.anti_patterns
+        for source_name, source_spec in sorted(series_config.sources.items()):
+            paths = list_image_paths(source_spec, config.extensions, anti_patterns)
+            resolved.append((series_name, source_name, paths))
+    return resolved

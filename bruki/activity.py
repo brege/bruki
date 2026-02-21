@@ -10,7 +10,7 @@ import pandas as pd
 from PIL import Image
 
 from bruki import plots
-from bruki.config import ConfigModel, list_image_paths, load_config, resolve_events
+from bruki.config import ConfigModel, load_config, resolve_events, resolve_paths
 
 
 def parse_timestamp(filename: str, patterns: list[dict[str, Any]]) -> datetime | None:
@@ -89,27 +89,24 @@ def collect_rows(config: ConfigModel, set_name: str) -> pd.DataFrame:
     set_config = config.plots[set_name]
     columns = ["series", "source", "analysis", "timestamp", "hour", "day_of_week", "month", "date"]
     rows = []
-    for series_name in set_config.series:
+    for series_name, source_name, file_paths in resolve_paths(config, series=set_config.series):
         series_config = config.data[series_name]
         methods = series_config.methods
         patterns = series_config.patterns
-        anti_patterns = config.anti_patterns + series_config.anti_patterns
-        for source_name, source_spec in series_config.sources.items():
-            file_paths = list_image_paths(source_spec, config.extensions, anti_patterns)
-            for file_path in file_paths:
-                timestamp = extract_timestamp(file_path, methods, patterns)
-                rows.append(
-                    {
-                        "series": series_name,
-                        "source": source_name,
-                        "analysis": set_name,
-                        "timestamp": timestamp,
-                        "hour": timestamp.hour if timestamp else None,
-                        "day_of_week": timestamp.weekday() if timestamp else None,
-                        "month": timestamp.month if timestamp else None,
-                        "date": timestamp.date() if timestamp else None,
-                    }
-                )
+        for file_path in file_paths:
+            timestamp = extract_timestamp(file_path, methods, patterns)
+            rows.append(
+                {
+                    "series": series_name,
+                    "source": source_name,
+                    "analysis": set_name,
+                    "timestamp": timestamp,
+                    "hour": timestamp.hour if timestamp else None,
+                    "day_of_week": timestamp.weekday() if timestamp else None,
+                    "month": timestamp.month if timestamp else None,
+                    "date": timestamp.date() if timestamp else None,
+                }
+            )
     return pd.DataFrame(rows, columns=columns)
 
 
