@@ -1,66 +1,28 @@
 # **brūki** · Image Charts & Tagging
 
-Exploring image activity over time from multiple sources & image types, and building out a screenshot labeling/tagging system.
+Brūki helps you explore habits and trends across your image collections. It uses machine learning to help you tag and filter screenshots (recipes, receipts, chats and more) through your browser.
 
 ## Setup
 
 ```bash
 git clone https://github.com/brege/bruki
 cd bruki && uv sync # [--extra notebook --extra ml]
+```
+
+Configure all image sources in `config.yaml`. See [Configuration](#configuration)
+```yaml
 cp config.example.yaml config.yaml
-# see "Configuration" below -> edit config.yaml
-uv run activity # --output-dir images
 ```
 
-This sequence will generate heatmaps, histograms, and trends about source image data based on what's configured in your `config.yaml`.
+## 1) Charts
 
-## Features
+- Generate heatmaps, histograms, and trends of image activity over time
+- Fine grained image discovery modified-times, EXIF, regex, etc.
+- Mark major life events and device chases in charts
 
-### Part 1: Time Series Analysis
-
-- Generate heatmaps and histograms of image saving activity over hours, days, and months
-- Use file timestamps, modified-times, EXIF, and regex parsing for refined image discovery
-- Add bands and markers for major life events and device purchases
-
-If you don't care about the screenshot analysis ([Part 2](#part-2) below) and just want to generate activity plots, you can go directly to [Background](#background).
-
-### Part 2: Screenshot Categorization
-
-> [!WARNING]
-> This section is under active development.
-
-- Use baseline Data Science exploration techniques to categorize ~3000 screenshots
-- Compare OCR via [tesseract](https://github.com/UB-Mannheim/tesseract) and CLIP from [OpenAI](https://github.com/openai/CLIP)
-- Building out a tagging/labeling web app and API to interactively annotate screenshots with machine learning assistence
-
-Ensure, if you plan on doing ML work:
 ```bash
-uv sync --extra ml --extra notebook
+uv run activity
 ```
-
-This effort is evolving this project into a web app that can automatically and interactively categorize screenshots. There are three main parts of the web app:
-
-1. Generate a reproducible screenshot sample for manual labels.
-   ```bash
-   uv run python -m bruki.samples --seed 42 --samples 200
-   ```
-
-2. Launch the labeling app and label the sample.
-   ```bash
-   uv run www
-   ```
-   Open http://localhost:5000. This relies on your configuration in `config.yaml`.
-
-3. The notebook analysis compares your manual labels with OCR and CLIP clustering.
-   ```bash
-   jupyter notebook classify.ipynb
-   ```
-
-The web app stores labels in `data/server/labels.jsonl`, and notebook experiments can be rerun as this file grows.
-
-## Background
-
-See [my blog post](https://brege.org/post/image-activity/) for motivation behind the first half, Part 1, of this project.
 
 ### Questions
 
@@ -69,11 +31,13 @@ See [my blog post](https://brege.org/post/image-activity/) for motivation behind
 - do I have "honeymoon" periods after a device purchase?
 - in what ways has my camera and screenshot usage changed between being an academic, chef, and developer?
 
-My reference image collection fits in three main categories:
+My reference image collection broadly fits in three main buckets.
 
 1. **camera** photos from my phone
 2. **screenshots** from both my laptop and my phone
 3. **internet** pictures downloaded from the internet
+
+See my blog post [brege.org/image-activity](https://brege.org/post/image-activity/) for in-depth insights of the following charts.
 
 ### Screenshot vs. Camera vs. Internet Trends
 
@@ -111,15 +75,44 @@ My reference image collection fits in three main categories:
   </tr>
 </table>
 
+## 2) Screenshot Tagging
 
-## Part 2: Screenshot Categorization
+- Use machine learning techniques to categorize thousands of screenshots in minutes
+- Interactively annotate screenshots with machine learning through your browser
 
-Assumes running through the workflow of labeling ~5-10% of your screenshots with the `uv run www` tool.
+A [Jupyter notebook](classify.ipynb) is available for Machine Learning analysis using
+- **OCR** via [tesseract](https://github.com/UB-Mannheim/tesseract),and
+- **CLIP** from [OpenAI](https://github.com/openai/CLIP)
 
-All images are generated through the Jupyter notebook [classify.ipynb](classify.ipynb) using two different clustering methods:
+```bash
+uv sync --extra ml --extra notebook
+```
+
+1. Generate a reproducible screenshot sample to annotate with manual labels.
+   ```bash
+   uv run bruki/samples.py --seed 42 --samples 100
+   ```
+2. Launch the labeling app and label the sample.
+   ```bash
+   uv run www --sample
+   ```
+   Then open http://localhost:5000.
+3. The notebook analysis compares your manual labels with OCR and CLIP clustering.
+   ```bash
+   jupyter notebook classify.ipynb
+   ```
+
+The Jupyter notebook ([classify.ipynb](classify.ipynb)) performs the following analysis:
 
 1. Tesseract > extraction of OCR tokens > Jaccard similarity > cluster vs. label
 2. CLIP > extraction of image embeddings > cosine similarity > heatmap cluster vs. label
+
+based on the `samples.py` sample in `data/notebook/`.
+
+The web app generates an isolated dataset from the Jupyter notebook:
+
+* labels in `data/server/labels.jsonl`
+* OCR, CLIP embeddings, etc. in `data/server/state.sqlite3`
 
 ### Labeled Screenshots UMAP Clusters using CLIP
 
@@ -138,6 +131,9 @@ See [classify.ipynb](classify.ipynb) for full analysis. In short: CLIP is more a
 The web app currently includes only CLIP clustering in the backend. OCR will be useful to make search more robust and to provide additional suggestions.
 
 ## Configuration
+
+> [!NOTE] 
+> The examples here uses Camera sources. Screenshot sources are configured the exact same way.
 
 1. **sources**: these are local paths to image directories
 
@@ -183,14 +179,6 @@ The web app currently includes only CLIP clustering in the backend. OCR will be 
        before: 2017-07-31
        label: PhD Defense
    ```
-
-### Notes
-
-> [!IMPORTANT]
-> The YAML structure adds additional verbosity and line-of-code bloat that cannot be forgiven. It is indeed easier to just run a few small Python/matplotlib scripts to generate these plots. 
-
-> [!NOTE] 
-> This project, like [sanoma](https://github.com/brege/sanoma), is part of a series of datamine-yourself projects that are, at a later date, aiming to converge these tools into a series of collectors.
 
 ## License
 
