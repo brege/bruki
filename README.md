@@ -1,4 +1,4 @@
-# bruki · Image Activity & Tagging
+# **brūki** · Image Activity & Tagging
 
 Exploring image activity over time from multiple sources & image types, and building out a screenshot labeling/tagging system.
 

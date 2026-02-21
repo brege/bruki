@@ -46,7 +46,6 @@
 > [!WARNING] 
 > Work-in-progress and may be out-of-date. 
 
-
 `config.py` owns config loading and shared path resolution. `activity.py` and `samples.py` are CLIs. `ml.py` is a library used by `api.py`. `classify.ipynb` reads labels and evaluates OCR/CLIP workflows.
 
 ```mermaid
@@ -80,6 +79,7 @@ flowchart TB
 
 
 ### Code conventions
+
 - Typed dataclasses for structured data. `dict[str, Any]` only for genuinely open-ended config blobs.
 - String-keyed dispatch tables for routing by type or kind.
 - File-backed data (JSONL, labels) is cached by fingerprint or mtime. Avoid adding per-request reads.
@@ -91,3 +91,9 @@ flowchart TB
 - [**pydantic**](https://github.com/pydantic/pydantic) is the config contract. All YAML input is validated through `ConfigModel` at load time. Do not re-validate or re-parse config downstream.
 
 - [**pandas**](https://github.com/pandas-dev/pandas) is the data layer for anything involving image records, timestamps, or aggregations in the notebook, and sometimes in the app code. Manipulate JSON structures through and around the Flask API code only.
+
+### Install all dependencies
+
+```bash
+uv sync --all-extras --all-groups
+```
