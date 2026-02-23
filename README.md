@@ -135,50 +135,50 @@ The web app currently includes only CLIP clustering in the backend. OCR will be 
 > [!NOTE] 
 > The examples here uses Camera sources. Screenshot sources are configured the exact same way.
 
-1. **sources**: these are local paths to image directories
+### 1. sources
+These are local paths to image directories:
+```yaml
+data:
+  camera:
+    label: camera
+    color: "#c95de8"
+    methods:
+      - exif-created
+      - timestamp
+      - modified-time
+    sources:
+      phone:
+        path: ~/Syncthing/Phone/DCIM/Camera
+      laptop:
+        path: ~/Pictures/Camera
+```
 
-   ```yaml
-   data:
-     camera:
-       label: camera
-       color: "#c95de8"
-       methods:
-         - exif-created
-         - timestamp
-         - modified-time
-       sources:
-         phone:
-           path: ~/Syncthing/Phone/DCIM/Camera
-         laptop:
-           path: ~/Pictures/Camera
-   ```
+### 2. plotting
+Specify figures for each analysis key (`--key`)
+```yaml
+plots:
+  camera:
+    series:
+      - camera
+    title: Camera Activity
+    value_label: Photos
+    figures:
+      - kind: heatmap_per_source
+        series_key: source
+    events:
+      - phd_defense
+```
 
-2. **plotting**: specify figures for each analysis key (`--key`)
-
-   ```yaml
-   plots:
-     camera:
-       series:
-         - camera
-       title: Camera Activity
-       value_label: Photos
-       figures:
-         - kind: heatmap_per_source
-           series_key: source
-       events:
-         - phd_defense
-   ```
-
-3. **major events**: direct marker/band definitions
-
-   ```yaml
-   events:
-     phd_defense:
-       type: band
-       after: 2017-02-01
-       before: 2017-07-31
-       label: PhD Defense
-   ```
+### 3. major events
+Direct marker/band definitions.
+```yaml
+events:
+  phd_defense:
+    type: band
+    after: 2017-02-01
+    before: 2017-07-31
+    label: PhD Defense
+```
 
 ## License
 
