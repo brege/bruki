@@ -79,6 +79,9 @@ See my blog post [brege.org/image-activity](https://brege.org/post/image-activit
 
 ## 2) Screenshot Tagging
 
+> [!IMPORTANT]
+> The heart of this component of the project is tracked in the [Roadmap](docs/roadmap.md).
+
 - Use machine learning techniques to categorize thousands of screenshots in minutes
 - Interactively annotate screenshots with machine learning through your browser
 
