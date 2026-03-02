@@ -1,1 +1,2 @@
 *.ipynb filter=nbstripout
+notebooks/clusters.ipynb -filter
