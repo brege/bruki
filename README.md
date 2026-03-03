@@ -67,8 +67,8 @@ uv run www
 
 Brūki is very much a work in progress!
 
-- [docs/contributing.md](docs/contributing.md)
-- [docs/roadmap.md](docs/roadmap.md)
+- [Contributing](docs/contributing.md)
+- [Roadmap](docs/roadmap.md)
 
 ## License
 
