@@ -34,7 +34,7 @@ const filepathLabels = document.getElementById('filepath-labels');
 const tagbar = document.getElementById('tagbar');
 const jump = document.getElementById('jump');
 const total = document.getElementById('total');
-const filterToggle = document.getElementById('filter-toggle');
+const modeSelect = document.getElementById('mode-select');
 const tagsScopeDropdown = document.getElementById('tags-scope');
 const clustersDropdown = document.getElementById('clusters');
 const gallery = document.getElementById('gallery');
@@ -114,7 +114,7 @@ function updateBulkBar(galleryEnabled) {
   thumbSizeDown.disabled = !galleryEnabled || thumbMinPx <= THUMB_MIN_PX;
   thumbSizeUp.disabled = !galleryEnabled || thumbMinPx >= THUMB_MAX_PX;
   bulkCount.textContent = `${selectedPaths.size} selected`;
-  applyTagsButton.disabled = filterMode;
+  applyTagsButton.disabled = filterMode && selectedPaths.size === 0;
   const visCount = galleryMatches.length;
   const allSel =
     visCount > 0 &&
@@ -197,9 +197,11 @@ async function applyTagsToSelected() {
 }
 
 async function applyTags() {
-  if (filterMode) return;
-  if (selectedPaths.size) await applyTagsToSelected();
-  else await applyTagsToCurrentImage();
+  if (filterMode) {
+    await applyTagsToSelected();
+    return;
+  }
+  await applyTagsToCurrentImage();
 }
 
 // filter / cluster state
@@ -540,7 +542,7 @@ function initGalleryEvents() {
     idx = nextIdx;
     clearSelection();
     filterMode = false;
-    filterToggle.classList.remove('active');
+    modeSelect.value = 'add';
     render();
   });
 }
@@ -672,9 +674,8 @@ async function init() {
     jump.classList.remove('editing');
   });
 
-  filterToggle.addEventListener('click', () => {
-    filterMode = !filterMode;
-    filterToggle.classList.toggle('active', filterMode);
+  modeSelect.addEventListener('change', () => {
+    filterMode = modeSelect.value === 'filter';
     if (!filterMode && !selectedCluster) clearSelection();
     forceSingleView = false;
     render();
@@ -740,6 +741,7 @@ async function init() {
   idx = Number.isNaN(saved)
     ? 0
     : Math.max(0, Math.min(items.length - 1, saved));
+  modeSelect.value = filterMode ? 'filter' : 'add';
   render();
 
   if (sampleMode) {

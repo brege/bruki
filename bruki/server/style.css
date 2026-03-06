@@ -62,18 +62,12 @@ body {
   padding: 4px 6px;
   border-radius: 3px;
 }
-#filter-toggle {
+#mode-select {
   background: #2a2a28;
   color: var(--theme-text-primary-dark);
   border: 1px solid var(--theme-border-muted-dark);
-  padding: 4px 8px;
+  padding: 4px 6px;
   border-radius: 3px;
-  cursor: pointer;
-}
-#gallery-toggle.active,
-#filter-toggle.active {
-  border-color: var(--theme-accent-dark);
-  color: var(--theme-accent-dark);
 }
 #counter {
   color: var(--theme-text-muted-dark);
@@ -145,7 +139,8 @@ body {
   background: #2a2a28;
   color: var(--theme-text-primary-dark);
   border: 1px solid var(--theme-border-muted-dark);
-  padding: 4px 8px;
+  min-width: 34px;
+  padding: 4px 6px;
   border-radius: 3px;
   cursor: pointer;
 }
@@ -317,6 +312,7 @@ body {
   border-color: var(--theme-accent-dark);
 }
 #tagbar {
+  --tagbar-control-height: 40px;
   padding: 8px 12px;
   background: var(--theme-bg-card-dark);
   border-top: 1px solid var(--theme-border-muted-dark);
@@ -333,6 +329,10 @@ body {
 #tagbar.labeled {
   border-left-color: #363;
 }
+#tagbar > select,
+#tagbar > button {
+  height: var(--tagbar-control-height);
+}
 .tagify {
   --tag-bg: #1e3a5f;
   --tag-text-color: #dbeafe;
@@ -343,6 +343,8 @@ body {
   background: #2a2a28;
   width: 100%;
   flex: 1;
+  height: var(--tagbar-control-height);
+  min-height: var(--tagbar-control-height);
 }
 .tagify__dropdown {
   background: rgba(30, 30, 28, 0.85) !important;

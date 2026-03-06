@@ -40,13 +40,16 @@
       <option value="">all clusters</option>
     </select>
     <input id="tag-input" placeholder="add tags…">
-    <button id="filter-toggle" type="button">filter</button>
+    <select id="mode-select">
+      <option value="add">apply tag</option>
+      <option value="filter">filter by</option>
+    </select>
+    <button id="apply-tags" type="button">-&gt;</button>
     <select id="tags-scope">
       <option value="__any__">any tags</option>
       <option value="__none__">no tags</option>
       <option value="__sep__" disabled>---------</option>
     </select>
-    <button id="apply-tags" type="button">apply tags</button>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@yaireo/tagify/dist/tagify.min.js"></script>
